@@ -1,0 +1,9 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE Files (Optional, good practice)
+.vscode/
+.idea/
+*.swp
+*~

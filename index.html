@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Markdown Editor - Commented</title>
+    <!-- External Libraries -->
+    <!-- marked.js: Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- JSZip: Library for creating ZIP archives -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        /* --- Base Styles & Layout --- */
+        html, body {
+            height: 100%; /* Ensure body takes full viewport height */
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars on the body itself */
+        }
+        body {
+            font-family: sans-serif;
+            display: flex; /* Use flexbox for overall layout (Controls -> App Container) */
+            flex-direction: column;
+            background-color: var(--bg-color); /* Themed */
+            color: var(--text-color); /* Themed */
+            position: relative; /* Establish positioning context */
+        }
+
+        /* --- CSS Variables for Theming --- */
+        /* Defines colors used throughout the UI, allowing easy theme switching */
+        :root {
+            --bg-color: #f4f4f4;
+            --text-color: #333;
+            --controls-bg: #e0e0e0;
+            --controls-border: #ccc;
+            --button-bg: #f0f0f0;
+            --button-hover-bg: #ddd;
+            --button-border: #aaa;
+            --sidebar-bg: #e8e8e8;
+            --sidebar-header-bg: #d8d8d8;
+            --sidebar-border: #ccc;
+            --sidebar-item-hover-bg: #f0f0f0;
+            --sidebar-item-active-bg: #fff;
+            --sidebar-item-active-border: #4a90e2;
+            --tab-bg: #e8e8e8;
+            --tab-active-bg: var(--bg-color); /* Active tab matches main background */
+            --tab-border: #ccc;
+            --tab-container-bg: #d0d0d0;
+            --editor-bg: #fff;
+            --preview-bg: #fff;
+            --resizer-bg: #ccc;
+            --resizer-border: #aaa;
+            --toolbar-bg: #f0f0f0;
+            --toolbar-border: #ccc;
+            --statusbar-bg: #f0f0f0;
+            --statusbar-text: #555;
+            --findbar-bg: #f8f8f8;
+            --findbar-border: #ccc;
+            --link-color: #007bff;
+            --tag-bg: #f0f0f0;
+            --tag-border: #ccc;
+            --tag-active-bg: #4a90e2;
+            --tag-active-color: #fff;
+            --tag-active-border: #4a90e2;
+            --code-bg: #f0f0f0;
+            --pre-bg: #f0f0f0;
+            --blockquote-border: #ccc;
+            --blockquote-color: #666;
+            --hr-color: #eee;
+            --search-result-bg: #fff;
+            --search-result-hover-bg: #f0f0f0;
+            --search-result-border: #ddd;
+            --menu-bg: #f9f9f9;
+            --menu-border: #ccc;
+            --menu-hover-bg: #e0e0e0;
+            --placeholder-color: #888;
+            --icon-color: #666;
+            --icon-hover-color: #000;
+            --preview-bg-rgb: 255, 255, 255; /* RGB for semi-transparent overlay */
+            --dark-mode-invert: 0; /* Used for checkbox filter */
+        }
+
+        /* Dark theme overrides using CSS variables */
+        body.dark-mode {
+            --bg-color: #2d2d2d;
+            --text-color: #ccc;
+            --controls-bg: #3a3a3a;
+            --controls-border: #555;
+            --button-bg: #4a4a4a;
+            --button-hover-bg: #5a5a5a;
+            --button-border: #666;
+            --sidebar-bg: #353535;
+            --sidebar-header-bg: #404040;
+            --sidebar-border: #555;
+            --sidebar-item-hover-bg: #454545;
+            --sidebar-item-active-bg: #505050;
+            --sidebar-item-active-border: #5a9ee2;
+            --tab-bg: #383838;
+            --tab-active-bg: var(--bg-color);
+            --tab-border: #555;
+            --tab-container-bg: #303030;
+            --editor-bg: #282828;
+            --preview-bg: #2b2b2b;
+            --resizer-bg: #555;
+            --resizer-border: #777;
+            --toolbar-bg: #3a3a3a;
+            --toolbar-border: #555;
+            --statusbar-bg: #3a3a3a;
+            --statusbar-text: #aaa;
+            --findbar-bg: #3f3f3f;
+            --findbar-border: #555;
+            --link-color: #5a9ee2;
+            --tag-bg: #4a4a4a;
+            --tag-border: #666;
+            --tag-active-bg: #5a9ee2;
+            --tag-active-color: #fff;
+            --tag-active-border: #5a9ee2;
+            --code-bg: #3a3a3a;
+            --pre-bg: #3a3a3a;
+            --blockquote-border: #555;
+            --blockquote-color: #aaa;
+            --hr-color: #444;
+            --search-result-bg: #353535;
+            --search-result-hover-bg: #454545;
+            --search-result-border: #555;
+            --menu-bg: #404040;
+            --menu-border: #555;
+            --menu-hover-bg: #505050;
+            --placeholder-color: #777;
+            --icon-color: #aaa;
+            --icon-hover-color: #eee;
+            --preview-bg-rgb: 43, 43, 43;
+            --dark-mode-invert: 1;
+        }
+        /* --- End Theming --- */
+
+        /* --- Top Controls Bar --- */
+        .controls {
+            padding: 8px 10px;
+            background-color: var(--controls-bg);
+            border-bottom: 1px solid var(--controls-border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap; /* Allow controls to wrap on smaller screens */
+            flex-shrink: 0; /* Prevent controls bar from shrinking */
+            position: relative; /* Needed for menu positioning context */
+            z-index: 10; /* Ensure controls are above sidebar toggle when collapsed */
+        }
+        /* General styling for interactive elements in the controls bar */
+        .controls button, .controls select, .controls input[type="search"] {
+            padding: 6px 10px;
+            cursor: pointer;
+            border: 1px solid var(--button-border);
+            border-radius: 4px;
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            font-size: 13px;
+            white-space: nowrap; /* Prevent button text wrapping */
+        }
+        .controls button:hover, .controls input[type="search"]:hover, .controls select:hover {
+            background-color: var(--button-hover-bg);
+        }
+        .controls label { /* Labels for dropdown/search */
+            margin-left: 3px;
+            font-weight: bold;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+        #noteSwitcher { /* Note selection dropdown */
+            max-width: 150px;
+        }
+        #searchInput { /* Global search input */
+            flex-grow: 1; /* Allow search input to take available space */
+            min-width: 120px;
+            max-width: 220px;
+            background-color: var(--editor-bg); /* Match editor for theme consistency */
+            border: 1px solid var(--button-border);
+            color: var(--text-color);
+        }
+        #searchInput::placeholder {
+            color: var(--placeholder-color);
+        }
+
+        /* --- File Menu (Top-Left) --- */
+        #menuContainer {
+            position: relative; /* Context for absolute dropdown */
+            display: inline-block; /* Keep it inline with other controls */
+        }
+        #menuToggleBtn { /* The "Menu ☰" button */
+            font-weight: bold;
+        }
+        #menuDropdown { /* The panel holding menu items */
+            display: none; /* Hidden by default */
+            position: absolute; /* Position below the toggle button */
+            top: 100%;
+            left: 0;
+            background-color: var(--menu-bg);
+            min-width: 190px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); /* Drop shadow */
+            z-index: 15; /* Ensure menu is above other controls */
+            border: 1px solid var(--menu-border);
+            border-radius: 4px;
+            padding: 5px 0;
+        }
+        #menuDropdown.visible { /* Class added by JS to show the menu */
+            display: block;
+        }
+        .menu-item { /* Individual buttons within the dropdown */
+            display: block; /* Stack vertically */
+            width: 100%;
+            padding: 8px 12px;
+            text-align: left;
+            border: none;
+            background: none;
+            font-size: 14px;
+            cursor: pointer;
+            box-sizing: border-box; /* Include padding in width */
+            color: var(--text-color);
+        }
+        .menu-item:hover {
+            background-color: var(--menu-hover-bg);
+        }
+        .menu-separator { /* Visual separator line in the menu */
+            height: 1px;
+            background-color: var(--controls-border);
+            margin: 5px 0;
+        }
+
+        /* --- Main Application Layout (Sidebar | Main Content) --- */
+        #appContainer {
+            display: flex; /* Arrange sidebar and main content horizontally */
+            flex-grow: 1; /* Take remaining vertical space */
+            overflow: hidden; /* Prevent scrollbars on this container */
+            position: relative; /* Positioning context for fixed sidebar button */
+        }
+
+        /* --- Sidebar Styles --- */
+        #sidebar {
+            width: 220px; /* Default width */
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
+            display: flex;
+            flex-direction: column; /* Stack header, tags, list vertically */
+            flex-shrink: 0; /* Prevent sidebar from shrinking smaller than width */
+            transition: width 0.3s ease, padding 0.3s ease, border 0.3s ease; /* Smooth collapse */
+            overflow: hidden; /* Hide content during transition/collapse */
+            position: relative; /* Context for toggle button inside */
+            z-index: 5; /* Stacking order */
+        }
+        #sidebar.collapsed { /* State when sidebar is hidden */
+            width: 0;
+            padding-left: 0;
+            padding-right: 0;
+            border-right: none;
+            overflow: hidden; /* Ensure content is clipped */
+        }
+
+        /* Sidebar Toggle Button '<' / '>' */
+        #sidebarToggleBtn {
+            position: absolute; /* Relative to sidebar when open */
+            top: 5px;
+            right: 5px;
+            z-index: 10; /* Above sidebar content */
+            padding: 2px 6px; font-size: 16px; line-height: 1;
+            cursor: pointer; border: 1px solid var(--button-border);
+            background-color: var(--button-bg); color: var(--text-color);
+            border-radius: 3px; transition: all 0.3s ease; /* Smooth transitions */
+        }
+        #sidebarToggleBtn:hover {
+            background-color: var(--button-hover-bg);
+        }
+        /* Position toggle button using fixed positioning when sidebar is collapsed */
+        #sidebar.collapsed ~ #mainContent > #sidebarToggleBtnFixed { /* Select the fixed button only when sidebar is collapsed */
+             display: block !important; /* Make the fixed button visible */
+             position: fixed;
+             left: 5px;
+             top: 45px; /* Adjust based on controls height */
+             z-index: 12;
+             padding: 2px 6px; font-size: 16px; line-height: 1;
+             cursor: pointer; border: 1px solid var(--button-border);
+             background-color: var(--button-hover-bg); /* Slightly different background */
+             color: var(--text-color);
+             border-radius: 3px;
+             opacity: 1;
+        }
+         /* Hide the original button when sidebar is collapsed */
+        #sidebar.collapsed #sidebarToggleBtn {
+            opacity: 0;
+            pointer-events: none; /* Make it unclickable */
+        }
+
+        /* Sidebar Header (Notes title, Sort dropdown) */
+        .sidebar-header {
+            padding: 10px 10px 5px 15px;
+            background-color: var(--sidebar-header-bg);
+            border-bottom: 1px solid var(--sidebar-border);
+            flex-shrink: 0; /* Prevent header shrinking */
+        }
+        .sidebar-header h3 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+            display: inline-block;
+        }
+        #sortOrder { /* Dropdown for sorting notes */
+            font-size: 11px;
+            padding: 2px;
+            border-radius: 3px;
+            margin-left: 10px;
+            vertical-align: middle;
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+        }
+
+        /* Sidebar Tag Section */
+        #tagSection {
+            padding: 5px 10px 5px 15px;
+            border-bottom: 1px solid var(--sidebar-border);
+            flex-shrink: 0;
+            background-color: var(--controls-bg); /* Use controls background */
+        }
+        #tagSection h4 { /* "Tags" header */
+            margin: 0 0 5px 0;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        #tagList { /* Container for tag buttons */
+            max-height: 100px; /* Limit height, allow scroll */
+            overflow-y: auto;
+        }
+        .tag-button { /* Individual tag button */
+            font-size: 11px;
+            background-color: var(--tag-bg);
+            border: 1px solid var(--tag-border);
+            border-radius: 10px; /* Pill shape */
+            padding: 2px 6px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            display: inline-block;
+            color: var(--text-color);
+        }
+        .tag-button:hover {
+            background-color: var(--button-hover-bg);
+        }
+        .tag-button.active-tag { /* Style for the currently active filter tag */
+            background-color: var(--tag-active-bg);
+            color: var(--tag-active-color);
+            border-color: var(--tag-active-border);
+        }
+        #clearTagFilterBtn { /* Button to clear active tag filter */
+            font-size: 10px;
+            margin-left: 5px;
+            background: none;
+            border: none;
+            color: var(--link-color);
+            cursor: pointer;
+            padding: 0;
+        }
+        #clearTagFilterBtn:hover {
+            text-decoration: underline;
+        }
+
+        /* Sidebar Note List Area */
+        #sidebarNoteList {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto; /* Enable scrolling for long list */
+            flex-grow: 1; /* Take remaining vertical space */
+        }
+        .sidebar-note-item { /* Each note item in the list */
+            display: flex;
+            align-items: center;
+            padding: 8px 5px 8px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--hr-color); /* Use HR color for subtle separator */
+        }
+        .sidebar-note-item:hover {
+            background-color: var(--sidebar-item-hover-bg);
+        }
+        .note-name-sidebar { /* Span containing the note name */
+            flex-grow: 1; /* Take available space */
+            white-space: nowrap; /* Prevent wrapping */
+            overflow: hidden; /* Hide overflow */
+            text-overflow: ellipsis; /* Show '...' for long names */
+            font-size: 14px;
+            margin-right: 5px;
+        }
+        .pin-note-btn { /* Pin button ('📌') */
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0 5px;
+            font-size: 14px;
+            opacity: 0.3; /* Dimmed by default */
+            flex-shrink: 0; /* Prevent shrinking */
+            color: var(--text-color); /* Use text color to support theme */
+        }
+        /* Show pin more clearly on hover or if pinned */
+        .sidebar-note-item:hover .pin-note-btn,
+        .sidebar-note-item .pin-note-btn.pinned {
+            opacity: 1;
+        }
+        /* Style for the currently active note in the sidebar */
+        .sidebar-note-item.active-note-sidebar {
+            background-color: var(--sidebar-item-active-bg);
+            font-weight: bold; /* Optional: make text bold */
+            /* border-left: 3px solid var(--sidebar-item-active-border); /* Alternative active indicator */
+            /* padding-left: 12px; */
+        }
+        .sidebar-note-item.active-note-sidebar .note-name-sidebar {
+            font-weight: bold; /* Ensure name is bold if item is active */
+        }
+        /* --- End Sidebar Styles --- */
+
+
+        /* --- Main Content Area (Right of Sidebar) --- */
+        #mainContent {
+            flex-grow: 1; /* Take remaining horizontal space */
+            display: flex;
+            flex-direction: column; /* Stack Tabs, Toolbar, Editor/Preview */
+            overflow: hidden; /* Prevent scrollbars here */
+            position: relative; /* Needed for fixed sidebar button context */
+            z-index: 1; /* Ensure it's below controls */
+        }
+
+        /* --- Tab Bar --- */
+        #tabs {
+            display: flex;
+            align-items: flex-end; /* Align tabs to bottom of container */
+            background-color: var(--tab-container-bg);
+            padding: 5px 10px 0 5px; /* Top padding provides space from controls */
+            flex-wrap: nowrap; /* Prevent tabs wrapping */
+            overflow-x: auto; /* Allow horizontal scrolling for many tabs */
+            border-bottom: 1px solid var(--tab-border);
+            min-height: 36px; /* Ensure bar has height */
+            box-sizing: border-box;
+            flex-shrink: 0; /* Prevent tab bar from shrinking */
+        }
+        .tab { /* Individual tab button */
+            display: inline-flex; /* Use flex for name + close btn */
+            align-items: center;
+            padding: 8px 10px 8px 15px; /* Adjust padding for close btn */
+            cursor: pointer;
+            border: 1px solid var(--tab-border);
+            border-bottom: none; /* Remove bottom border */
+            background-color: var(--tab-bg);
+            color: var(--text-color);
+            margin-right: 4px;
+            border-radius: 4px 4px 0 0; /* Rounded top corners */
+            white-space: nowrap;
+            position: relative;
+            max-width: 180px; /* Limit tab width */
+            font-size: 14px;
+            line-height: 1;
+        }
+        .tab-name { /* Span containing tab name */
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex-grow: 1; /* Allow name to take space */
+            margin-right: 5px; /* Space before close button */
+        }
+        .close-tab-btn { /* 'x' button inside tab */
+            font-family: sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--icon-color);
+            padding: 0 4px;
+            margin-left: auto; /* Push to right */
+            border-radius: 3px;
+            line-height: 1;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+        .close-tab-btn:hover {
+            background-color: var(--button-hover-bg);
+            color: var(--icon-hover-color);
+        }
+        .tab.active { /* Style for the active tab */
+            background-color: var(--tab-active-bg); /* Match main background */
+            border-bottom: 1px solid var(--tab-active-bg); /* Hide bottom border by matching bg */
+            z-index: 1; /* Bring active tab slightly forward */
+            position: relative;
+            top: 1px; /* Align slightly lower to meet container */
+            font-weight: bold;
+        }
+        .tab:not(.active):hover { /* Hover for inactive tabs */
+            background-color: var(--button-hover-bg);
+        }
+        #addTabBtn { /* '+' button to add new tab */
+            font-size: 18px;
+            font-weight: bold;
+            padding: 4px 8px;
+            margin-left: 5px;
+            border: 1px dashed var(--button-border); /* Distinct style */
+            border-radius: 4px;
+            background-color: transparent;
+            color: var(--icon-color);
+            line-height: 1;
+            align-self: center; /* Vertically center */
+            margin-bottom: 3px; /* Align near bottom like tabs */
+            cursor: pointer;
+        }
+        #addTabBtn:hover {
+            background-color: var(--button-hover-bg);
+            color: var(--icon-hover-color);
+            border-style: solid;
+        }
+
+        /* --- Editor Toolbar --- */
+        #editorToolbar {
+            padding: 5px 10px;
+            background-color: var(--toolbar-bg);
+            border-bottom: 1px solid var(--toolbar-border);
+            flex-shrink: 0; /* Prevent shrinking */
+            user-select: none; /* Prevent selecting text on toolbar */
+        }
+        #editorToolbar button { /* Buttons on the toolbar */
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 3px 8px;
+            margin-right: 5px;
+            cursor: pointer;
+            border: 1px solid var(--button-border);
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            border-radius: 3px;
+            min-width: 25px; /* Ensure minimum size */
+            text-align: center;
+            vertical-align: middle;
+        }
+        #editorToolbar button:hover {
+            background-color: var(--button-hover-bg);
+            border-color: #aaa; /* Keep hover distinct */
+        }
+        #editorToolbar .heading-btn { /* Specific style for H1/H2/H3 buttons */
+            font-size: 12px;
+        }
+
+        /* --- Find/Replace Bar --- */
+         #findReplaceBar {
+            display: none; /* Hidden by default, shown by JS */
+            padding: 5px 10px;
+            background-color: var(--findbar-bg);
+            border-bottom: 1px solid var(--findbar-border);
+            flex-shrink: 0; /* Prevent shrinking */
+            font-size: 12px;
+            align-items: center; /* Vertically align items */
+         }
+         #findReplaceBar input[type="text"] { /* Find and Replace inputs */
+            font-size: 12px;
+            padding: 2px 4px;
+            margin-right: 5px;
+            border: 1px solid var(--button-border);
+            border-radius: 3px;
+            background-color: var(--editor-bg);
+            color: var(--text-color);
+         }
+          #findReplaceBar button { /* Buttons in the find bar */
+            font-size: 11px;
+            padding: 2px 6px;
+            margin-left: 3px;
+            cursor: pointer;
+            border: 1px solid var(--button-border);
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            border-radius: 3px;
+         }
+         #findReplaceBar button:hover {
+            background-color: var(--button-hover-bg);
+         }
+         #findReplaceCloseBtn { /* Close button for the bar */
+            margin-left: auto; /* Push close button right */
+            font-weight: bold;
+            color: var(--icon-color);
+         }
+         #findReplaceCloseBtn:hover {
+            color: var(--icon-hover-color);
+         }
+         #findMatchCount { /* Display for 'X / Y' matches */
+             margin-left: 10px;
+             font-style: italic;
+             color: var(--statusbar-text);
+         }
+
+        /* --- Editor/Preview Container and Resizer --- */
+        .container { /* Holds Editor container, Resizer, Preview */
+            display: flex; /* Arrange horizontally */
+            flex-grow: 1; /* Take remaining space */
+            overflow: hidden;
+            z-index: 0;
+            background-color: var(--editor-bg); /* Base background */
+        }
+        #editorContainer { /* Wrapper for editor + status bar */
+            display: flex;
+            flex-direction: column; /* Stack editor and status bar */
+            flex-basis: 50%; /* Initial size, controlled by JS */
+            flex-shrink: 1; flex-grow: 1; /* Allow resizing */
+            min-width: 100px; /* Prevent collapsing */
+            height: 100%;
+            overflow: hidden; /* Contain editor scroll */
+            background-color: var(--editor-bg);
+        }
+        #editor { /* The main text area */
+            flex-grow: 1; /* Take available vertical space */
+            border: none; resize: none; /* Disable textarea default resize handle */
+            font-family: monospace;
+            background-color: var(--editor-bg);
+            color: var(--text-color);
+            outline: none; /* Remove focus outline */
+            height: auto; /* Let container control height */
+            width: 100%; /* Fill container */
+            padding: 15px; box-sizing: border-box;
+            overflow-y: auto; /* Allow vertical scrolling */
+            font-size: 14px; line-height: 1.6;
+        }
+        #statusBar { /* Area below editor for word count */
+            padding: 3px 10px;
+            font-size: 11px;
+            color: var(--statusbar-text);
+            background-color: var(--statusbar-bg);
+            border-top: 1px solid var(--controls-border);
+            text-align: right;
+            flex-shrink: 0; /* Don't shrink */
+            white-space: nowrap;
+        }
+        #resizer { /* Draggable divider */
+            flex-basis: 5px; /* Width */
+            flex-shrink: 0; flex-grow: 0; /* Fixed size */
+            cursor: col-resize; /* Indicate draggability */
+            background-color: var(--resizer-bg);
+            border-left: 1px solid var(--resizer-border);
+            border-right: 1px solid var(--resizer-border);
+            height: 100%;
+            box-sizing: border-box;
+            user-select: none; -moz-user-select: none; -webkit-user-select: none; -ms-user-select: none; /* Prevent text selection */
+        }
+        #preview { /* The live preview pane */
+            flex-basis: 50%; /* Initial size, controlled by JS */
+            flex-shrink: 1; flex-grow: 1; /* Allow resizing */
+            background-color: var(--preview-bg);
+            color: var(--text-color);
+            min-width: 100px; /* Prevent collapsing */
+            height: 100%;
+            padding: 15px; box-sizing: border-box;
+            overflow-y: auto; /* Allow vertical scrolling */
+            font-size: 14px; line-height: 1.6;
+            border-left: none; /* Resizer provides visual separation */
+        }
+
+        /* --- Markdown Preview Specific Styles --- */
+        #preview h1, #preview h2, #preview h3, #preview h4, #preview h5, #preview h6 { margin-top: 1em; margin-bottom: 0.5em; border-bottom: 1px solid var(--hr-color); padding-bottom: 0.3em; }
+        #preview h1 { font-size: 2em; } #preview h2 { font-size: 1.5em; } #preview h3 { font-size: 1.25em; }
+        #preview code { background-color: var(--code-bg); padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; }
+        #preview pre { background-color: var(--pre-bg); padding: 10px; border-radius: 4px; overflow-x: auto; color: var(--text-color); }
+        #preview pre code { background-color: transparent; padding: 0; }
+        #preview blockquote { border-left: 4px solid var(--blockquote-border); padding-left: 10px; color: var(--blockquote-color); margin-left: 0; }
+        #preview ul, #preview ol { padding-left: 20px; }
+        /* GFM Task List Item styling */
+        #preview .task-list-item { list-style-type: none; margin-left: -1.2em; /* Adjust alignment */ }
+        #preview .task-list-item input[type="checkbox"] { margin-right: 0.5em; filter: invert(var(--dark-mode-invert, 0)); /* Basic dark mode */ }
+        #preview table { border-collapse: collapse; width: auto; }
+        #preview th, #preview td { border: 1px solid var(--tab-border); padding: 6px 13px; }
+        #preview th { font-weight: bold; background-color: var(--button-bg); }
+        #preview img { max-width: 100%; background-color: white; /* Background for transparent images */ }
+        #preview hr { border: 0; border-top: 1px solid var(--hr-color); margin: 1em 0; }
+        #preview a { color: var(--link-color); }
+
+        /* --- Global Search Results Overlay --- */
+        #searchResults { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 700px; max-height: 70vh; overflow-y: auto; background-color: rgba(var(--preview-bg-rgb), 0.98); /* Use RGB for transparency */ border: 1px solid var(--button-border); border-radius: 5px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); padding: 20px; z-index: 1000; display: none; font-size: 14px; color: var(--text-color); }
+        #searchCloseBtn { position: absolute; top: 5px; right: 10px; font-size: 24px; font-weight: bold; color: var(--icon-color); cursor: pointer; border: none; background: none; padding: 0 5px; } #searchCloseBtn:hover { color: var(--icon-hover-color); }
+        .search-result-item { margin-bottom: 15px; padding: 10px; border: 1px solid var(--search-result-border); border-radius: 4px; background-color: var(--search-result-bg); cursor: pointer; } .search-result-item:hover { background-color: var(--search-result-hover-bg); border-color: var(--button-border); }
+        .search-result-name { font-weight: bold; margin-bottom: 5px; color: var(--text-color); }
+        .search-result-snippet { color: var(--text-color); line-height: 1.5; opacity: 0.8; }
+        .search-result-snippet mark { background-color: yellow; color: black; font-weight: bold; padding: 0.1em 0; border-radius: 2px; }
+        #searchResults h3 { margin-top: 0; border-bottom: 1px solid var(--controls-border); padding-bottom: 5px; }
+        #searchResults p { margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <!-- Top Control Bar -->
+    <div class="controls">
+        <!-- File Menu Dropdown -->
+        <div id="menuContainer">
+            <button id="menuToggleBtn" title="File Menu">Menu ☰</button>
+            <div id="menuDropdown">
+                <button id="newNoteBtn" class="menu-item">Add New Note (Ctrl+N)</button>
+                <button id="renameBtn" class="menu-item">Rename Current Note</button>
+                <div class="menu-separator"></div>
+                <button id="saveBtn" class="menu-item">Save Current Note (Ctrl+S)</button>
+                <button id="exportAllBtn" class="menu-item">Export All Notes (.zip)</button>
+                <div class="menu-separator"></div>
+                <button id="importBtn" class="menu-item">Import Files (.md)...</button>
+                <button id="importFolderBtn" class="menu-item">Import Folder...</button>
+                <div class="menu-separator"></div>
+                <button id="findReplaceToggleBtn" class="menu-item">Find / Replace (Ctrl+F)</button>
+                <div class="menu-separator"></div>
+                <button id="themeToggleBtnMenu" class="menu-item">Toggle Theme</button>
+            </div>
+        </div>
+        <!-- Other Main Controls -->
+        <button id="openBtn">Open File...</button>
+        <button id="closeNoteBtn">Close Current Note</button>
+        <label for="noteSwitcher">Switch:</label>
+        <select id="noteSwitcher"></select>
+        <label for="searchInput">Search:</label>
+        <input type="search" id="searchInput" placeholder="Search content...">
+        <button id="searchBtn">Go</button>
+        <button id="themeToggleBtn" title="Toggle Light/Dark Theme">🎨</button>
+    </div>
+
+    <!-- Main Application Container (Sidebar + Main Content) -->
+    <div id="appContainer">
+        <!-- Left Sidebar -->
+        <div id="sidebar">
+            <!-- Toggle Button (Positioned by CSS) -->
+            <button id="sidebarToggleBtn" title="Collapse Sidebar"><</button>
+            <!-- Sidebar Header with Title and Sort Dropdown -->
+            <div class="sidebar-header">
+                <h3>Notes</h3>
+                <select id="sortOrder" title="Sort Notes">
+                    <option value="modified-desc">Modified (Newest)</option>
+                    <option value="modified-asc">Modified (Oldest)</option>
+                    <option value="created-desc">Created (Newest)</option>
+                    <option value="created-asc">Created (Oldest)</option>
+                    <option value="name-asc">Name (A-Z)</option>
+                    <option value="name-desc">Name (Z-A)</option>
+                </select>
+            </div>
+            <!-- Tag Filtering Section -->
+            <div id="tagSection">
+                <h4>Tags <button id="clearTagFilterBtn" style="display: none;">(Clear)</button></h4>
+                <div id="tagList"></div>
+            </div>
+            <!-- List of Notes -->
+            <ul id="sidebarNoteList"></ul>
+        </div>
+
+        <!-- Main Content Area (Tabs, Toolbars, Editor/Preview) -->
+        <div id="mainContent">
+            <!-- Tab Bar -->
+            <div id="tabs">
+                 <button id="addTabBtn" title="Add New Note">+</button>
+            </div>
+             <!-- Editor Formatting Toolbar -->
+             <div id="editorToolbar">
+                <button id="toolbarH1" class="heading-btn" title="Heading 1">H1</button>
+                <button id="toolbarH2" class="heading-btn" title="Heading 2">H2</button>
+                <button id="toolbarH3" class="heading-btn" title="Heading 3">H3</button>
+                <button id="toolbarBold" title="Bold (Ctrl+B)">B</button>
+                <button id="toolbarItalic" title="Italic (Ctrl+I)">I</button>
+                <button id="toolbarStrikethrough" title="Strikethrough">S</button>
+                <button id="toolbarBlockquote" title="Blockquote">></button>
+                <button id="toolbarLink" title="Link">🔗</button>
+                <button id="toolbarCode" title="Code">`</button>
+                <button id="toolbarListUl" title="Bullet List">-</button>
+                <button id="toolbarListOl" title="Numbered List">1.</button>
+                <button id="toolbarTaskList" title="Task List">✓</button>
+                <button id="toolbarHr" title="Horizontal Rule">—</button>
+            </div>
+            <!-- Find/Replace Bar (Initially Hidden) -->
+            <div id="findReplaceBar">
+                <input type="text" id="findInput" placeholder="Find">
+                <input type="text" id="replaceInput" placeholder="Replace">
+                <button id="findPrevBtn" title="Find Previous">▲</button>
+                <button id="findNextBtn" title="Find Next">▼</button>
+                <button id="replaceBtn" title="Replace">Replace</button>
+                <button id="replaceAllBtn" title="Replace All">All</button>
+                <span id="findMatchCount"></span>
+                <button id="findReplaceCloseBtn" title="Close Find/Replace Bar (Esc)">×</button>
+            </div>
+            <!-- Container for Editor and Preview Panes -->
+            <div class="container">
+                <!-- Wrapper for Editor and Status Bar -->
+                <div id="editorContainer">
+                     <textarea id="editor" spellcheck="false"></textarea>
+                     <div id="statusBar">
+                         <span id="wordCount">Words: 0</span> | <span id="charCount">Chars: 0</span>
+                     </div>
+                </div>
+                <!-- Draggable Resizer -->
+                <div id="resizer"></div>
+                <!-- Live Preview Pane -->
+                <div id="preview"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Search Results Overlay (Initially Hidden) -->
+    <div id="searchResults">
+        <button id="searchCloseBtn" title="Close Search Results">×</button>
+        <h3>Search Results</h3>
+        <div id="searchResultsContent"></div>
+    </div>
+
+    <!-- Hidden File Input Element -->
+    <input type="file" id="fileInput" accept=".md,.txt" style="display: none;" multiple>
+
+    <script>
+        // --- DOM References ---
+        // Cache references to frequently used DOM elements for performance
+        const editor = document.getElementById('editor');
+        const preview = document.getElementById('preview');
+        const tabsContainer = document.getElementById('tabs');
+        const openBtn = document.getElementById('openBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const newNoteBtn = document.getElementById('newNoteBtn'); // Menu button
+        const renameBtn = document.getElementById('renameBtn');
+        const closeNoteBtn = document.getElementById('closeNoteBtn'); // Main controls button
+        const fileInput = document.getElementById('fileInput'); // Hidden input for file operations
+        const noteSwitcher = document.getElementById('noteSwitcher'); // Dropdown in controls
+        const searchInput = document.getElementById('searchInput'); // Global search input
+        const searchBtn = document.getElementById('searchBtn'); // Global search button
+        const searchResults = document.getElementById('searchResults'); // Search results overlay panel
+        const searchResultsContent = document.getElementById('searchResultsContent'); // Content area of search results
+        const searchCloseBtn = document.getElementById('searchCloseBtn'); // Close button for search results
+        const sidebar = document.getElementById('sidebar'); // Left sidebar container
+        const sidebarToggleBtn = document.getElementById('sidebarToggleBtn'); // Button inside sidebar (position adjusted by CSS)
+        const sidebarNoteList = document.getElementById('sidebarNoteList'); // UL element for notes list
+        const sortOrderSelect = document.getElementById('sortOrder'); // Dropdown for sorting notes
+        const tagListContainer = document.getElementById('tagList'); // Container for tag buttons
+        const clearTagFilterBtn = document.getElementById('clearTagFilterBtn'); // Button to clear tag filter
+        const menuToggleBtn = document.getElementById('menuToggleBtn'); // "Menu ☰" button
+        const menuDropdown = document.getElementById('menuDropdown'); // Dropdown panel for menu
+        const findReplaceToggleBtn = document.getElementById('findReplaceToggleBtn'); // Menu item to show find/replace
+        const themeToggleBtn = document.getElementById('themeToggleBtn'); // Theme toggle button in controls
+        const themeToggleBtnMenu = document.getElementById('themeToggleBtnMenu'); // Theme toggle button in menu
+        const exportAllBtn = document.getElementById('exportAllBtn');
+        const importBtn = document.getElementById('importBtn');
+        const importFolderBtn = document.getElementById('importFolderBtn');
+        const addTabBtn = document.getElementById('addTabBtn'); // '+' button next to tabs
+        const resizer = document.getElementById('resizer'); // Draggable divider between editor/preview
+        const container = document.querySelector('.container'); // Flex container for editor/resizer/preview
+        const editorContainer = document.getElementById('editorContainer'); // Wrapper for editor + status bar
+        const editorToolbar = document.getElementById('editorToolbar'); // Toolbar above editor
+        const wordCountSpan = document.getElementById('wordCount'); // Status bar elements
+        const charCountSpan = document.getElementById('charCount');
+        const findReplaceBar = document.getElementById('findReplaceBar'); // Find/Replace UI container
+        const findInput = document.getElementById('findInput'); // Find input field
+        const replaceInput = document.getElementById('replaceInput'); // Replace input field
+        const findPrevBtn = document.getElementById('findPrevBtn'); // Find previous button
+        const findNextBtn = document.getElementById('findNextBtn'); // Find next button
+        const replaceBtn = document.getElementById('replaceBtn'); // Replace current button
+        const replaceAllBtn = document.getElementById('replaceAllBtn'); // Replace all button
+        const findMatchCount = document.getElementById('findMatchCount'); // Span to show match count
+        const findReplaceCloseBtn = document.getElementById('findReplaceCloseBtn'); // Close button for find/replace bar
+
+
+        // --- Application State Variables ---
+        let notes = []; // Array to hold all note objects { id, name, content, isPinned, createdAt, updatedAt }
+        let activeNoteId = null; // ID of the currently active note
+        let untitledCounter = 1; // Counter for naming new untitled notes
+        let isSidebarCollapsed = false; // Tracks if the sidebar is collapsed
+        let firstAddedNoteIdDuringImport = null; // Temp storage for focusing after bulk import
+        let isResizing = false; // Flag to track if editor/preview panes are being resized
+        let unsavedChanges = false; // Flag to track if changes exist since last file save (for beforeunload prompt)
+        let findState = { query: '', matches: [], currentIndex: -1 }; // State for the find/replace feature
+        let currentSortOrder = 'modified-desc'; // Default sorting for sidebar note list
+        let activeFilterTag = null; // Tracks the currently selected tag for filtering, null if none
+        let currentTheme = 'light'; // Tracks the current theme ('light' or 'dark')
+        let autoSaveTimer = null; // Timer ID for throttled auto-save
+
+
+        // --- Configure Markdown Parser (marked.js) ---
+        marked.setOptions({
+             breaks: true, // Interpret carriage returns as <br>
+             gfm: true, // Enable GitHub Flavored Markdown extensions (tables, task lists, etc.)
+             pedantic: false, // Don't be strict about basic Markdown syntax
+             smartLists: true, // Use slightly smarter list behavior
+             smartypants: false // Don't translate quotes/dashes to smart versions
+        });
+
+        // --- Core Utility Functions ---
+
+        /** Finds a note object in the 'notes' array by its ID. */
+        function findNoteById(id) { const numericId = Number(id); return notes.find(note => note.id === numericId); }
+        /** Finds the index of a note object in the 'notes' array by its ID. */
+        function findNoteIndexById(id) { const numericId = Number(id); return notes.findIndex(note => note.id === numericId); }
+        /** Escapes special characters in a string for use in a Regular Expression. */
+        function escapeRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+        // --- Core UI Update Functions ---
+
+        /** Updates the preview pane with the HTML rendering of the editor's content. */
+        function updatePreview() {
+             if (activeNoteId !== null && editor) {
+                 const contentToRender = editor.value;
+                 try { preview.innerHTML = marked.parse(contentToRender); }
+                 catch(e){ console.error("Markdown Parsing Error:", e); preview.innerHTML = "<p>Error parsing Markdown.</p>"}
+             } else { preview.innerHTML = ''; }
+         }
+
+        /** Updates the word and character count in the status bar. */
+        function updateStatusBar() {
+             if (!editor || !charCountSpan || !wordCountSpan) return; // Check elements exist
+             const content = editor.value || '';
+             const charCount = content.length;
+             // Basic word count: splits by whitespace, filters out empty strings
+             const wordCount = content.trim() ? content.trim().split(/\s+/).filter(Boolean).length : 0;
+             charCountSpan.textContent = `Chars: ${charCount}`;
+             wordCountSpan.textContent = `Words: ${wordCount}`;
+        }
+
+        /** Sets the global 'unsavedChanges' flag and optionally updates the active note's 'updatedAt' timestamp. */
+        function setUnsavedChanges(hasUnsaved, updateTimestamp = true) {
+             if (unsavedChanges !== hasUnsaved) { unsavedChanges = hasUnsaved; }
+             // Update timestamp only if marking as unsaved and allowed
+             if (hasUnsaved && updateTimestamp && activeNoteId) {
+                 const note = findNoteById(activeNoteId);
+                 // Avoid rapid updates during typing by checking if enough time has passed
+                 if (note && (!note.updatedAt || Date.now() - note.updatedAt > 500)) {
+                      note.updatedAt = Date.now();
+                 }
+             }
+        }
+
+        // --- Sorting Logic ---
+
+        /** Sorts an array of note objects based on the specified order. */
+        function sortNotes(notesToSort, sortOrder) {
+             const sorted = [...notesToSort]; // Create a shallow copy to sort
+             sorted.sort((a, b) => {
+                 // Default values for robustness if properties are missing
+                 const aName = a.name || ''; const bName = b.name || '';
+                 const aCreated = a.createdAt || 0; const bCreated = b.createdAt || 0;
+                 const aUpdated = a.updatedAt || 0; const bUpdated = b.updatedAt || 0;
+
+                 switch (sortOrder) {
+                     case 'name-asc': return aName.localeCompare(bName);
+                     case 'name-desc': return bName.localeCompare(aName);
+                     case 'created-asc': return aCreated - bCreated;
+                     case 'created-desc': return bCreated - aCreated;
+                     case 'modified-asc': return aUpdated - bUpdated;
+                     case 'modified-desc': default: return bUpdated - aUpdated; // Default sort
+                 }
+             });
+             return sorted;
+        }
+
+         // --- Tagging Logic ---
+
+         /** Extracts unique tags (like #tag) from a string of content. */
+         function extractTags(content) {
+             const tagRegex = /#([a-zA-Z0-9_\-\/]+)/g; // Regex for # followed by valid tag characters
+             const matches = content.matchAll(tagRegex);
+             const tags = new Set();
+             for (const match of matches) { tags.add(match[1].toLowerCase()); } // Store lowercase
+             return Array.from(tags);
+         }
+
+         /** Finds all unique tags across all notes and renders them as clickable buttons in the sidebar. */
+         function extractAndRenderTags() {
+             try {
+                 const allTags = new Set();
+                 notes.forEach(note => {
+                     // Use live editor value for active note, otherwise stored content
+                     const content = (note.id === activeNoteId && editor) ? editor.value : note.content;
+                     if(typeof content === 'string'){ // Safety check
+                       const tags = extractTags(content);
+                       tags.forEach(tag => allTags.add(tag));
+                     }
+                 });
+                 const sortedTags = Array.from(allTags).sort((a, b) => a.localeCompare(b)); // Sort alphabetically
+
+                 tagListContainer.innerHTML = ''; // Clear previous tags
+                 if (sortedTags.length === 0) {
+                     tagListContainer.innerHTML = '<span style="font-size: 11px; color: #666;">No tags found.</span>';
+                 } else {
+                     // Create a button for each tag
+                     sortedTags.forEach(tag => {
+                         const tagButton = document.createElement('button');
+                         tagButton.className = 'tag-button';
+                         tagButton.textContent = `#${tag}`;
+                         tagButton.dataset.tag = tag;
+                         if (tag === activeFilterTag) { tagButton.classList.add('active-tag'); } // Highlight active filter
+                         tagButton.addEventListener('click', () => { // Add click listener for filtering
+                             if (activeFilterTag === tag) { clearTagFilter(); } else { setTagFilter(tag); }
+                         });
+                         tagListContainer.appendChild(tagButton);
+                     });
+                 }
+                 // Show/hide the "(Clear)" button based on whether a filter is active
+                 clearTagFilterBtn.style.display = activeFilterTag ? 'inline' : 'none';
+             } catch (e) {
+                 console.error("Error rendering tags:", e);
+                 tagListContainer.innerHTML = '<span style="font-size: 11px; color: red;">Error loading tags.</span>';
+             }
+         }
+
+         /** Sets the active tag filter and triggers UI updates. */
+         function setTagFilter(tag) { activeFilterTag = tag; renderSidebarNoteList(); extractAndRenderTags(); }
+         /** Clears the active tag filter and triggers UI updates. */
+         function clearTagFilter() { activeFilterTag = null; renderSidebarNoteList(); extractAndRenderTags(); }
+
+        // --- Main UI Rendering Functions ---
+
+        /** Renders the note tabs based on the current `notes` array, respecting pinning. */
+        function renderTabs() {
+             try {
+                 tabsContainer.querySelectorAll('.tab').forEach(tab => tab.remove()); // Clear existing tabs
+                 // Sort notes: Pinned first, then by creation time (or other desired order)
+                 const sortedForTabs = notes.slice().sort((a, b) => (b.isPinned - a.isPinned) || (a.createdAt - b.createdAt));
+
+                 sortedForTabs.forEach(note => {
+                     const tab = document.createElement('button'); tab.className = 'tab'; tab.dataset.id = note.id;
+                     const tabNameSpan = document.createElement('span'); tabNameSpan.className = 'tab-name'; tabNameSpan.textContent = note.name; tabNameSpan.title = note.name;
+                     const closeBtnSpan = document.createElement('span'); closeBtnSpan.className = 'close-tab-btn'; closeBtnSpan.innerHTML = '×'; closeBtnSpan.title = 'Close Note'; closeBtnSpan.dataset.id = note.id;
+                     tab.appendChild(tabNameSpan); tab.appendChild(closeBtnSpan);
+                     if (note.id === activeNoteId) { tab.classList.add('active'); }
+                     // Switch note on tab click (ignore clicks on close button)
+                     tab.addEventListener('click', (e) => { if (e.target !== closeBtnSpan) { switchTab(Number(tab.dataset.id)); } });
+                     // Close specific note on 'x' click
+                     closeBtnSpan.addEventListener('click', (e) => { e.stopPropagation(); closeNoteById(Number(closeBtnSpan.dataset.id)); });
+                     tabsContainer.insertBefore(tab, addTabBtn); // Insert tab before the '+' button
+                 });
+                 // Scroll the active tab into view if needed
+                 const activeTabElement = tabsContainer.querySelector('.tab.active'); if (activeTabElement) { activeTabElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); }
+             } catch(e){ console.error("Error rendering tabs:", e); }
+        }
+
+        /** Renders the note options in the dropdown switcher. */
+        function renderSwitcher() {
+             try {
+                 const sortedNotesForSwitcher = sortNotes(notes, currentSortOrder); // Respect current sort order
+                 noteSwitcher.innerHTML = '';
+                 sortedNotesForSwitcher.forEach(note => { const option = document.createElement('option'); option.value = note.id; option.textContent = note.name; if (note.id === activeNoteId) { option.selected = true; } noteSwitcher.appendChild(option); });
+                 noteSwitcher.disabled = notes.length === 0;
+             } catch(e){ console.error("Error rendering switcher:", e); }
+        }
+
+        /** Renders the list of notes in the sidebar, respecting pinning, sorting, and filtering. */
+        function renderSidebarNoteList() {
+             try {
+                 // Filter notes based on the active tag first
+                 let notesToDisplay = notes;
+                 if (activeFilterTag) { const filterRegex = new RegExp(`#${escapeRegExp(activeFilterTag)}(?:\\s|$)`, 'i'); notesToDisplay = notes.filter(note => { const content = (note.id === activeNoteId && editor) ? editor.value : note.content; return typeof content === 'string' && filterRegex.test(content); }); }
+                 // Separate pinned and unpinned notes
+                 const pinnedNotes = notesToDisplay.filter(n => n.isPinned); const unpinnedNotes = notesToDisplay.filter(n => !n.isPinned);
+                 // Sort each group according to the selected order
+                 const sortedPinned = sortNotes(pinnedNotes, currentSortOrder); const sortedUnpinned = sortNotes(unpinnedNotes, currentSortOrder);
+                 // Combine: Pinned first, then unpinned
+                 const finalSortedNotes = [...sortedPinned, ...sortedUnpinned];
+
+                 sidebarNoteList.innerHTML = ''; // Clear the list
+                 // Create list items for each note
+                 finalSortedNotes.forEach(note => {
+                     const listItem = document.createElement('li'); listItem.className = 'sidebar-note-item'; listItem.dataset.id = note.id;
+                     if (note.id === activeNoteId) { listItem.classList.add('active-note-sidebar'); } // Highlight active note
+                     const noteNameSpan = document.createElement('span'); noteNameSpan.className = 'note-name-sidebar'; noteNameSpan.textContent = note.name; noteNameSpan.title = note.name;
+                     const pinButton = document.createElement('button'); pinButton.className = 'pin-note-btn'; pinButton.innerHTML = '📌'; pinButton.title = note.isPinned ? 'Unpin Note' : 'Pin Note';
+                     if (note.isPinned) { pinButton.classList.add('pinned'); } // Style pinned icon
+                     pinButton.dataset.id = note.id;
+                     // Add listener to toggle pin status
+                     pinButton.addEventListener('click', (e) => { e.stopPropagation(); togglePinNote(Number(pinButton.dataset.id)); });
+                     // Add listener to switch note when list item (not pin) is clicked
+                     listItem.addEventListener('click', (e) => { if (e.target !== pinButton) { switchTab(Number(listItem.dataset.id)); } });
+                     listItem.appendChild(noteNameSpan); listItem.appendChild(pinButton); sidebarNoteList.appendChild(listItem);
+                 });
+             } catch (e) { console.error("Error rendering sidebar note list:", e); sidebarNoteList.innerHTML = '<li>Error loading notes list.</li>'; }
+        }
+
+        /** Master function to update all relevant UI parts. */
+        function renderUI() {
+             // Use try/catch for each part to isolate potential rendering errors
+             try { renderTabs(); } catch(e){ console.error("Error in renderTabs:", e); }
+             try { renderSwitcher(); } catch(e){ console.error("Error in renderSwitcher:", e); }
+             try { renderSidebarNoteList(); } catch(e){ console.error("Error in renderSidebarNoteList:", e); }
+             try { extractAndRenderTags(); } catch(e){ console.error("Error in extractAndRenderTags:", e); }
+             try { updateStatusBar(); } catch(e){ console.error("Error in updateStatusBar:", e); }
+        }
+
+        // --- Note Management Actions ---
+
+        /** Toggles the pinned status of a note and updates the UI. */
+        function togglePinNote(noteId) { const note = findNoteById(noteId); if (note) { note.isPinned = !note.isPinned; note.updatedAt = Date.now(); setUnsavedChanges(true, false); saveStateToLocalStorage(); renderSidebarNoteList(); } }
+
+        /** Switches the active note, saving current state and loading new state. */
+        function switchTab(id) {
+            const numericId = Number(id);
+            // Prevent unnecessary switching if already active
+            if (activeNoteId === numericId && findNoteById(numericId)) return;
+
+            // Save current editor content to the note object before switching
+            const currentActiveNote = findNoteById(activeNoteId);
+            if (currentActiveNote && editor.value !== currentActiveNote.content) {
+                currentActiveNote.content = editor.value;
+                currentActiveNote.updatedAt = Date.now();
+                setUnsavedChanges(true, false); // Mark state as needing file save, but timestamp is done
+            }
+
+            activeNoteId = numericId;
+            const note = findNoteById(numericId);
+
+            if (note) { // If the target note exists
+                editor.value = note.content;
+                updatePreview(); // Update preview based on loaded content
+                renderUI(); // Update tabs, sidebar, dropdown, status bar
+                editor.focus();
+                setUnsavedChanges(false); // Mark as 'saved' relative to its loaded state
+                hideFindReplace(); // Hide find bar when switching notes
+            } else { // Handle case where target note ID doesn't exist (e.g., after deletion)
+                 console.warn("Switching to non-existent note ID:", numericId);
+                 if (notes.length > 0) {
+                     // Default to the first available note
+                     activeNoteId = notes[0].id;
+                     editor.value = notes[0].content;
+                 } else {
+                     // No notes left
+                     activeNoteId = null;
+                     editor.value = '';
+                 }
+                 updatePreview();
+                 renderUI();
+                 setUnsavedChanges(false);
+                 hideFindReplace();
+            }
+            closeMenuDropdown(); // Ensure menu closes on switch
+            saveStateToLocalStorage(); // Persist the new state (active ID, potentially updated content of previous note)
+        }
+
+        /** Adds a new note to the list and makes it active. */
+        function addNote(name = null, content = '') {
+             const now = Date.now();
+             const newId = now; // Use timestamp as simple unique ID
+             let noteName = name;
+             // Generate default name if none provided
+             if (!noteName) {
+                 let nextNum = 1;
+                 // Find the highest existing "Untitled X" number to avoid reuse
+                 notes.forEach(n => { const match = n.name.match(/^Untitled\s*(\d+)$/i); if (match && parseInt(match[1], 10) >= nextNum) { nextNum = parseInt(match[1], 10) + 1; } });
+                 untitledCounter = Math.max(untitledCounter, nextNum); // Update global counter if needed
+                 noteName = `Untitled ${untitledCounter++}`;
+             }
+             // Create the new note object with metadata
+             const newNote = { id: newId, name: noteName, content: content, isPinned: false, createdAt: now, updatedAt: now };
+             notes.push(newNote);
+             setUnsavedChanges(true, false); // New note needs saving to file; don't update timestamp yet
+             hideFindReplace(); // Hide find bar if open
+             switchTab(newId); // Switch to the new note (handles UI update and state saving)
+             return newId; // Return the ID of the newly created note
+        }
+
+        /** Prompts the user to rename the active note. */
+        function renameNote() {
+            if (!activeNoteId) { alert("Please select a note to rename."); return; }
+            const note = findNoteById(activeNoteId); if (!note) return;
+            const oldName = note.name;
+            const newName = prompt("Enter the new name for the note:", oldName);
+            // Proceed only if a new, different, non-empty name was entered
+            if (newName && newName.trim() && newName.trim() !== oldName) {
+                note.name = newName.trim();
+                note.updatedAt = Date.now(); // Update timestamp
+                setUnsavedChanges(true, false); // Renaming is an unsaved change
+                renderUI(); // Update display
+                saveStateToLocalStorage(); // Persist the change
+            }
+            closeMenuDropdown(); // Close menu regardless
+        }
+
+        /** Closes a specific note by its ID. */
+        function closeNoteById(idToClose) {
+            const numericIdToClose = Number(idToClose);
+            if (notes.length <= 0) return;
+            const indexToClose = findNoteIndexById(numericIdToClose);
+            if (indexToClose === -1) { console.error("Cannot close note: ID not found", numericIdToClose); return; }
+            const wasActive = (numericIdToClose === activeNoteId);
+            notes.splice(indexToClose, 1); // Remove note from array
+            setUnsavedChanges(true); // Closing implies potential loss of unsaved state
+
+            if (notes.length === 0) { // If last note was closed
+                editor.value = ''; preview.innerHTML = ''; activeNoteId = null; untitledCounter = 1;
+                renderUI(); saveStateToLocalStorage(); setUnsavedChanges(false); hideFindReplace();
+            } else if (wasActive) { // If the closed note was the active one
+                // Determine the next note to activate (prefer previous, fallback to first)
+                const nextIndex = Math.max(0, indexToClose - 1);
+                const nextActiveId = notes[nextIndex] ? notes[nextIndex].id : notes[0].id;
+                activeNoteId = null; // Temporarily clear active ID before switching
+                switchTab(nextActiveId); // Switch handles UI update and state saving
+            } else { // If a background note was closed
+                renderUI(); // Just update the UI (tabs, sidebar)
+                saveStateToLocalStorage(); // Save the reduced notes list
+            }
+            closeSearchResults(); closeMenuDropdown(); // Clean up UI
+        }
+
+        /** Closes the currently active note. */
+        function closeNote() { if (activeNoteId !== null) { closeNoteById(activeNoteId); } else if (notes.length > 0) { closeNoteById(notes[0].id); /* Fallback */ } }
+
+        /** Saves the currently active note to a local file. */
+        function saveNote() {
+            if (!activeNoteId) { alert("Please select a note to save."); return; }
+            const note = findNoteById(activeNoteId); if (!note) return;
+            note.content = editor.value; // Ensure latest content is captured
+            note.updatedAt = Date.now(); // Update timestamp on save
+            let filename = note.name;
+            // Add .md extension if needed
+            if (!/\.(md|txt)$/i.test(filename)) { filename += '.md'; }
+            // Create Blob and download link
+            const blob = new Blob([note.content], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); // Trigger download
+            URL.revokeObjectURL(url); // Clean up Blob URL
+            setUnsavedChanges(false); // Mark as saved (relative to file system)
+            closeMenuDropdown();
+            saveStateToLocalStorage(); // Save updated timestamp to local storage
+        }
+
+        // --- Import / Export ---
+
+        /** Triggers the file input for importing multiple files. */
+        function importFiles() { fileInput.value = null; fileInput.setAttribute('multiple', ''); fileInput.click(); closeMenuDropdown(); }
+        /** Triggers the file input for opening a single file. */
+        function openSingleFile() { fileInput.removeAttribute('multiple'); fileInput.value = null; fileInput.click(); closeMenuDropdown(); }
+
+        /** Handles the file input change event for both single and multiple file imports. */
+        function handleFileOpen(event) {
+            const files = event.target.files; if (!files || files.length === 0) { fileInput.setAttribute('multiple', ''); return; }
+            firstAddedNoteIdDuringImport = null; let notesProcessed = 0; setUnsavedChanges(true);
+            Array.from(files).forEach((file, index) => {
+                const reader = new FileReader(); const fileCreationTime = file.lastModified;
+                reader.onload = (e) => {
+                    const content = e.target.result; const name = file.name;
+                    const existingNote = notes.find(note => note.name === name); let addedNoteId = null;
+                    if (existingNote) { // Handle name collision
+                         if (files.length === 1 && confirm(`A note named "${name}" is already open. Replace its content? (Cancel to import as copy)`)) {
+                             existingNote.content = content; existingNote.updatedAt = fileCreationTime || Date.now(); // Update content and timestamp
+                             if(existingNote.id === activeNoteId) { editor.value = content; updatePreview(); } // Refresh editor if active
+                             else { renderUI(); } // Otherwise just update lists
+                         } else { // Import as copy for multiple files or if user cancels confirmation
+                             addedNoteId = addNote(name.replace(/(\.[^.]*)?$/i, ` (copy)$1`), content);
+                             // Attempt to set more accurate timestamps for the copy
+                             const newNote = findNoteById(addedNoteId); if(newNote){ newNote.createdAt = fileCreationTime || newNote.createdAt; newNote.updatedAt = fileCreationTime || newNote.updatedAt; }
+                         }
+                    } else { // No collision, add normally
+                        addedNoteId = addNote(name, content);
+                        // Attempt to set more accurate timestamps
+                        const newNote = findNoteById(addedNoteId); if(newNote){ newNote.createdAt = fileCreationTime || newNote.createdAt; newNote.updatedAt = fileCreationTime || newNote.updatedAt; }
+                    }
+                    if (addedNoteId !== null && firstAddedNoteIdDuringImport === null) { firstAddedNoteIdDuringImport = addedNoteId; } // Track first added note
+                    notesProcessed++;
+                    // After processing all files, switch to the first *newly added* one if applicable
+                    if (notesProcessed === files.length && firstAddedNoteIdDuringImport !== null && findNoteById(firstAddedNoteIdDuringImport) ) {
+                        switchTab(firstAddedNoteIdDuringImport); // switchTab saves state
+                    } else if (notesProcessed === files.length) { // If no new notes added or first was closed
+                        renderUI(); saveStateToLocalStorage(); // Ensure UI and state are updated
+                    }
+                };
+                reader.onerror = (e) => { console.error("Error reading file:", file.name, e); alert("Error reading file: " + file.name); notesProcessed++; };
+                reader.readAsText(file);
+            });
+            fileInput.setAttribute('multiple', ''); // Ensure multiple is re-enabled
+        }
+
+        /** Recursively processes files within a directory handle (File System Access API). */
+        async function processDirectory(directoryHandle) {
+            try {
+                for await (const entry of directoryHandle.values()) {
+                    if (entry.kind === 'file' && /\.(md|txt)$/i.test(entry.name)) { // Process only .md/.txt files
+                        try {
+                            const fileHandle = await entry.getFile(); const content = await fileHandle.text();
+                            const name = entry.name; const fileCreationTime = fileHandle.lastModified;
+                            const existingNote = notes.find(note => note.name === name); let addedNoteId = null;
+                            // Add as copy if name exists, otherwise add normally
+                            if (existingNote) { addedNoteId = addNote(name.replace(/(\.[^.]*)?$/i, ` (copy)$1`), content); }
+                            else { addedNoteId = addNote(name, content); }
+                            // Set timestamps for the newly added note
+                            if(addedNoteId){ const newNote = findNoteById(addedNoteId); if(newNote){ newNote.createdAt = fileCreationTime || newNote.createdAt; newNote.updatedAt = fileCreationTime || newNote.updatedAt; } }
+                            // Track the first note added during this recursive process
+                            if (addedNoteId !== null && firstAddedNoteIdDuringImport === null) { firstAddedNoteIdDuringImport = addedNoteId; }
+                        } catch (fileError) { console.error(`Error reading file ${entry.name}:`, fileError); alert(`Could not read file: ${entry.name}\n${fileError.message}`); }
+                    } else if (entry.kind === 'directory') {
+                        await processDirectory(entry); // Recurse into subdirectories
+                    }
+                }
+            } catch (dirError) { console.error(`Error reading directory ${directoryHandle.name}:`, dirError); alert(`Could not read directory: ${directoryHandle.name}\n${dirError.message}`); }
+        }
+
+        /** Initiates folder import using the File System Access API. */
+        async function importFolder() {
+             closeMenuDropdown();
+             if (typeof window.showDirectoryPicker !== 'function') { alert("Folder import is not supported by your browser. Try Chrome or Edge."); return; }
+             try {
+                 const directoryHandle = await window.showDirectoryPicker(); if (!directoryHandle) return; // User cancelled
+                 firstAddedNoteIdDuringImport = null; // Reset tracker
+                 console.log(`Processing directory: ${directoryHandle.name}`); setUnsavedChanges(true);
+                 await processDirectory(directoryHandle); // Start recursive processing
+                 // After processing, switch to the first note added, if any
+                 if (firstAddedNoteIdDuringImport !== null && findNoteById(firstAddedNoteIdDuringImport)) { switchTab(firstAddedNoteIdDuringImport); console.log("Folder import finished."); }
+                 else { renderUI(); saveStateToLocalStorage(); console.log("Folder import finished. No new notes added or first note removed."); }
+             } catch (err) { if (err.name === 'AbortError') { console.log('Folder picker cancelled.'); } else { console.error("Error importing folder:", err); alert(`Error importing folder: ${err.message}`); } }
+        }
+
+        /** Exports all current notes into a downloadable ZIP archive. */
+        function exportAllNotes() {
+             if (typeof JSZip === 'undefined') { alert("Error: JSZip library not loaded."); return; }
+             if (notes.length === 0) { alert("No notes to export."); return; }
+             closeMenuDropdown();
+             // Ensure current editor content is saved to the active note object
+             const currentNote = findNoteById(activeNoteId); if (currentNote) { currentNote.content = editor.value; }
+             const zip = new JSZip(); const nameCounts = {}; // For handling duplicate names
+             // Add each note to the zip file
+             notes.forEach(note => {
+                 let filename = note.name; if (!/\.(md|txt)$/i.test(filename)) { filename += '.md'; }
+                 // Handle potential duplicate filenames within the zip
+                 const baseName = filename.replace(/\.(md|txt)$/i, ''); const extension = (filename.match(/\.(md|txt)$/i) || ['.md'])[0];
+                 let counter = nameCounts[filename] || 0; let uniqueFilename = filename;
+                 while (zip.file(uniqueFilename)) { counter++; uniqueFilename = `${baseName} (${counter})${extension}`; }
+                 nameCounts[filename] = counter;
+                 // Add file to zip with content and last modified date
+                 zip.file(uniqueFilename, note.content, { date: new Date(note.updatedAt || Date.now()) });
+             });
+             // Generate the zip file asynchronously and trigger download
+             zip.generateAsync({ type: "blob", compression: "DEFLATE" }).then(function(content) {
+                 const link = document.createElement('a'); link.href = URL.createObjectURL(content); link.download = "markdown_notes.zip";
+                 document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href);
+             }).catch(function(err) { console.error("Error generating zip:", err); alert("Error creating zip: " + err.message); });
+        }
+
+        // --- Global Content Search Functionality ---
+        // (Functions: performSearch, closeSearchResults - largely unchanged, use existing note content)
+        function performSearch() { const query = searchInput.value.trim(); if (!query) { searchResultsContent.innerHTML = '<p>Please enter a search term.</p>'; searchResults.style.display = 'block'; return; } const currentActiveNote = findNoteById(activeNoteId); if (currentActiveNote) { currentActiveNote.content = editor.value; } const queryLower = query.toLowerCase(); const queryRegex = new RegExp(escapeRegExp(query), 'gi'); let resultsHTML = ''; let resultsCount = 0; const snippetLength = 80; notes.forEach(note => { const content = note.content; const contentLower = content.toLowerCase(); let matchIndex = contentLower.indexOf(queryLower); if (matchIndex !== -1) { resultsCount++; const startIndex = Math.max(0, matchIndex - snippetLength); const endIndex = Math.min(content.length, matchIndex + query.length + snippetLength); let snippet = content.substring(startIndex, endIndex); if (startIndex > 0) snippet = '...' + snippet; if (endIndex < content.length) snippet = snippet + '...'; const highlightedSnippet = snippet.replace(queryRegex, match => `<mark>${match}</mark>`); resultsHTML += `<div class="search-result-item" data-note-id="${note.id}"><div class="search-result-name">${note.name}</div><div class="search-result-snippet">${highlightedSnippet}</div></div>`; } }); if (resultsCount > 0) { searchResultsContent.innerHTML = resultsHTML; } else { searchResultsContent.innerHTML = '<p>No results found.</p>'; } searchResults.style.display = 'block'; closeMenuDropdown(); }
+        function closeSearchResults() { searchResults.style.display = 'none'; searchResultsContent.innerHTML = ''; }
+
+        // --- UI Interaction Functions ---
+        /** Toggles the collapsed state of the sidebar. */
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            sidebar.classList.toggle('collapsed', isSidebarCollapsed);
+            // Update the button text/title (find the correct button instance)
+            const buttonToUpdate = document.getElementById('sidebarToggleBtn');
+            if (buttonToUpdate) {
+                buttonToUpdate.textContent = isSidebarCollapsed ? '>' : '<';
+                buttonToUpdate.title = isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
+            }
+            closeMenuDropdown();
+            saveStateToLocalStorage(); // Persist sidebar state
+        }
+        /** Toggles the visibility of the file menu dropdown. */
+        function toggleMenuDropdown() { menuDropdown.classList.toggle('visible'); }
+        /** Closes the file menu dropdown if it's open. */
+        function closeMenuDropdown() { if (menuDropdown.classList.contains('visible')) { menuDropdown.classList.remove('visible'); } }
+
+        // --- Editor/Preview Resizer Logic ---
+        let startX, startWidthEditorPercent; // Variables to track drag state
+        /** Initiates the dragging process for the resizer. */
+        function startDrag(e) { isResizing = true; startX = e.clientX; const editorWidth = editorContainer.offsetWidth; const containerWidth = container.offsetWidth; startWidthEditorPercent = (editorWidth / containerWidth) * 100; document.addEventListener('mousemove', handleDrag); document.addEventListener('mouseup', stopDrag); document.body.style.userSelect = 'none'; document.body.style.webkitUserSelect = 'none'; document.body.style.msUserSelect = 'none'; }
+        /** Handles mouse movement during resizing, calculating and applying new pane sizes. */
+        function handleDrag(e) { if (!isResizing) return; const dx = e.clientX - startX; const containerWidth = container.offsetWidth; const resizerWidth = resizer.offsetWidth; let newEditorPercent = startWidthEditorPercent + (dx / containerWidth * 100); const minWidthPx = 100; const minWidthPercent = (minWidthPx / containerWidth) * 100; if (newEditorPercent < minWidthPercent) { newEditorPercent = minWidthPercent; } let newPreviewPercent = 100 - newEditorPercent - (resizerWidth / containerWidth * 100); if (newPreviewPercent < minWidthPercent) { newPreviewPercent = minWidthPercent; newEditorPercent = 100 - newPreviewPercent - (resizerWidth / containerWidth * 100); } editorContainer.style.flexBasis = `${newEditorPercent}%`; preview.style.flexBasis = `${newPreviewPercent}%`; e.preventDefault(); }
+        /** Stops the dragging process and saves the new pane sizes. */
+        function stopDrag(e) { if (isResizing) { isResizing = false; document.removeEventListener('mousemove', handleDrag); document.removeEventListener('mouseup', stopDrag); document.body.style.userSelect = ''; document.body.style.webkitUserSelect = ''; document.body.style.msUserSelect = ''; saveStateToLocalStorage(); } }
+
+        // --- Markdown Formatting Toolbar Logic ---
+        /** Applies Markdown syntax around selected text or inserts placeholder. */
+        function applyMarkdownFormatting(syntaxStart, syntaxEnd = null, placeholder = 'text', isBlock = false) {
+            const start = editor.selectionStart; const end = editor.selectionEnd; const selectedText = editor.value.substring(start, end);
+            let textToInsert = ''; let finalSelectionStart = start; let finalSelectionEnd = end;
+            syntaxEnd = syntaxEnd ?? syntaxStart; // Default end syntax if not provided
+            let prefix = ''; if (isBlock && start !== 0 && editor.value[start - 1] !== '\n') { prefix = '\n'; } // Add newline before block elements if needed
+            let suffix = '';
+            // Special handling for Horizontal Rule
+            if (syntaxStart === '---') { prefix = (start !== 0 && editor.value[start - 1] !== '\n') ? '\n\n' : (start !== 0 && editor.value[start-1] === '\n' ? '\n' : ''); syntaxStart = `${prefix}---\n`; syntaxEnd = ''; placeholder = ''; textToInsert = syntaxStart; finalSelectionStart = start + syntaxStart.length; finalSelectionEnd = finalSelectionStart; }
+            // Handle selected text vs placeholder
+            else if (selectedText) { textToInsert = `${prefix}${syntaxStart}${selectedText}${syntaxEnd}${suffix}`; finalSelectionStart = start + prefix.length + syntaxStart.length; finalSelectionEnd = finalSelectionStart + selectedText.length; }
+            else { textToInsert = `${prefix}${syntaxStart}${placeholder}${syntaxEnd}${suffix}`; finalSelectionStart = start + prefix.length + syntaxStart.length; finalSelectionEnd = finalSelectionStart + placeholder.length; }
+            // Use setRangeText for better undo/redo potential
+            editor.setRangeText(textToInsert, start, end, 'select'); // 'select' selects the inserted text
+            // Adjust selection for placeholder case
+            if (!selectedText && placeholder && syntaxStart !== '---') { editor.setSelectionRange(finalSelectionStart, finalSelectionEnd); }
+            editor.focus(); updatePreview(); setUnsavedChanges(true, true); updateStatusBar();
+        }
+
+        // --- Find & Replace Logic ---
+        /** Shows the Find/Replace bar. */
+        function showFindReplace() { findReplaceBar.style.display = 'flex'; findInput.focus(); findInput.select(); closeMenuDropdown(); findAllMatches(); }
+        /** Hides the Find/Replace bar and resets its state. */
+        function hideFindReplace() { findReplaceBar.style.display = 'none'; findState = { query: '', matches: [], currentIndex: -1 }; findMatchCount.textContent = ''; }
+        /** Finds all occurrences of the text in the find input within the editor. */
+        function findAllMatches() { const query = findInput.value; if (!query) { findState.matches = []; findState.currentIndex = -1; findMatchCount.textContent = ''; return; } findState.query = query; findState.matches = []; const text = editor.value; const regex = new RegExp(escapeRegExp(query), 'gi'); let match; while ((match = regex.exec(text)) !== null) { findState.matches.push({ index: match.index, length: match[0].length }); } findState.currentIndex = -1; updateFindMatchCount(); }
+        /** Updates the match count display (e.g., "1 / 5"). */
+        function updateFindMatchCount() { if (findState.matches.length > 0) { const currentNum = findState.currentIndex === -1 ? 0 : findState.currentIndex + 1; findMatchCount.textContent = `${currentNum} / ${findState.matches.length}`; } else { findMatchCount.textContent = '0 / 0'; } }
+        /** Selects the next match in the editor, wrapping around if needed. */
+        function findNext() { if (findState.matches.length === 0) { findAllMatches(); if (findState.matches.length === 0) return; } findState.currentIndex++; if (findState.currentIndex >= findState.matches.length) { findState.currentIndex = 0; } selectMatch(findState.currentIndex); }
+        /** Selects the previous match in the editor, wrapping around if needed. */
+        function findPrev() { if (findState.matches.length === 0) { findAllMatches(); if (findState.matches.length === 0) return; } findState.currentIndex--; if (findState.currentIndex < 0) { findState.currentIndex = findState.matches.length - 1; } selectMatch(findState.currentIndex); }
+        /** Selects the text of the match at the given index in the editor. */
+        function selectMatch(index) { if (index >= 0 && index < findState.matches.length) { const match = findState.matches[index]; editor.focus(); editor.setSelectionRange(match.index, match.index + match.length); try { const lineNum = editor.value.substring(0, match.index).split('\n').length; const avgLineHeight = 20; editor.scrollTop = Math.max(0, (lineNum - 5) * avgLineHeight); } catch(e) {} updateFindMatchCount(); } }
+        /** Replaces the currently selected match with the replacement text. */
+        function replaceCurrent() { if (findState.currentIndex === -1 || findState.matches.length === 0) return; const match = findState.matches[findState.currentIndex]; const replacement = replaceInput.value; const originalStart = match.index; const originalLength = match.length; editor.setSelectionRange(originalStart, originalStart + originalLength); editor.setRangeText(replacement); const scrollPos = editor.scrollTop; findAllMatches(); let nextMatchIndex = -1; for(let i = 0; i < findState.matches.length; i++){ if(findState.matches[i].index >= originalStart + replacement.length){ nextMatchIndex = i; break; } } if(nextMatchIndex !== -1){ findState.currentIndex = nextMatchIndex -1; findNext(); } else { findState.currentIndex = -1; updateFindMatchCount(); } editor.scrollTop = scrollPos; updatePreview(); setUnsavedChanges(true, true); updateStatusBar(); }
+        /** Replaces all occurrences of the find text with the replacement text. */
+        function replaceAll() { const query = findInput.value; const replacement = replaceInput.value; if (!query) return; const regex = new RegExp(escapeRegExp(query), 'gi'); const originalValue = editor.value; const newValue = originalValue.replace(regex, replacement); if (originalValue !== newValue) { const scrollPos = editor.scrollTop; editor.value = newValue; editor.scrollTop = scrollPos; updatePreview(); setUnsavedChanges(true, true); updateStatusBar(); findAllMatches(); } }
+
+        // --- Editor Auto Features (Lists/Pairing) ---
+        const pairMap = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' }; const listMarkers = ['- ', '* ', '+ '];
+        /** Handles keydown events in the editor for auto-pairing and list continuation. */
+        function handleEditorKeyDown(event) {
+            const key = event.key; const start = editor.selectionStart; const end = editor.selectionEnd;
+            // Auto-Pairing
+            if (Object.keys(pairMap).includes(key)) { event.preventDefault(); const selectedText = editor.value.substring(start, end); const closingChar = pairMap[key]; const textToInsert = `${key}${selectedText}${closingChar}`; editor.setRangeText(textToInsert, start, end, 'end'); if (selectedText) { editor.setSelectionRange(start + 1, start + 1 + selectedText.length); } else { editor.setSelectionRange(start + 1, start + 1); } updatePreview(); setUnsavedChanges(true); updateStatusBar(); return; }
+            // Auto-List Continuation
+            if (key === 'Enter') { const currentLineStart = editor.value.lastIndexOf('\n', start - 1) + 1; const currentLine = editor.value.substring(currentLineStart, start); const trimmedLine = currentLine.trimStart(); let listPrefix = null; let isEmptyListItem = false; for (const marker of listMarkers) { if (trimmedLine.startsWith(marker)) { listPrefix = currentLine.match(/^\s*/)[0] + marker; isEmptyListItem = trimmedLine.length === marker.length; break; } } if (!listPrefix) { const orderedMatch = trimmedLine.match(/^(\d+)\.\s+/); if (orderedMatch) { const currentNum = parseInt(orderedMatch[1], 10); const indentation = currentLine.match(/^\s*/)[0]; listPrefix = `${indentation}${currentNum + 1}. `; isEmptyListItem = trimmedLine.length === orderedMatch[0].length; } } if (!listPrefix) { const taskMatch = trimmedLine.match(/^(-|\*|\+)\s+\[( |x)\]\s+/i); if(taskMatch){ const indentation = currentLine.match(/^\s*/)[0]; listPrefix = `${indentation}${taskMatch[1]} [ ] `; isEmptyListItem = trimmedLine.length === taskMatch[0].length; }} if (listPrefix) { event.preventDefault(); if (isEmptyListItem) { editor.setRangeText('', currentLineStart, start, 'end'); editor.setRangeText('\n', editor.selectionStart, editor.selectionStart, 'end'); } else { editor.setRangeText(`\n${listPrefix}`, start, end, 'end'); } updatePreview(); setUnsavedChanges(true); updateStatusBar(); return; } }
+        }
+
+         // --- Theme Logic ---
+         /** Applies the specified theme (light/dark) to the body element. */
+         function applyTheme(theme) { currentTheme = theme; if (theme === 'dark') { document.body.classList.add('dark-mode'); } else { document.body.classList.remove('dark-mode'); } }
+         /** Toggles between light and dark themes and saves the preference. */
+         function toggleTheme() { const newTheme = currentTheme === 'light' ? 'dark' : 'light'; applyTheme(newTheme); saveStateToLocalStorage(); }
+
+         // --- Local Storage Persistence ---
+         const LS_KEY = 'browserMarkdownEditorState_v5'; // Unique key for this app's state
+         /** Saves the entire application state to localStorage. */
+         function saveStateToLocalStorage() {
+             // Ensure current editor content and timestamp are captured if changed
+             const currentNote = findNoteById(activeNoteId);
+             let contentChanged = false;
+             if (currentNote && editor.value !== currentNote.content) {
+                 currentNote.content = editor.value; currentNote.updatedAt = Date.now(); contentChanged = true;
+             }
+             // Construct the state object
+             const state = { notes: notes, activeNoteId: activeNoteId, isSidebarCollapsed: isSidebarCollapsed, untitledCounter: untitledCounter, editorPanePercent: parseFloat(editorContainer.style.flexBasis) || 50, currentSortOrder: currentSortOrder, currentTheme: currentTheme };
+             try { localStorage.setItem(LS_KEY, JSON.stringify(state)); if(contentChanged) { setUnsavedChanges(true, false); /* Saved to state, maybe not file */ } }
+             catch (e) { console.error("Error saving state:", e); }
+         }
+         /** Loads application state from localStorage on startup. */
+         function loadStateFromLocalStorage() {
+             try {
+                 const savedState = localStorage.getItem(LS_KEY);
+                 if (savedState) { // If state exists
+                     const state = JSON.parse(savedState);
+                     // Restore notes array, ensuring new properties exist
+                     notes = state.notes || [];
+                     notes.forEach(note => { note.isPinned = note.isPinned || false; note.createdAt = note.createdAt || Date.now(); note.updatedAt = note.updatedAt || Date.now(); });
+                     // Restore other state variables
+                     activeNoteId = state.activeNoteId !== undefined ? state.activeNoteId : null;
+                     isSidebarCollapsed = state.isSidebarCollapsed || false;
+                     untitledCounter = state.untitledCounter || 1;
+                     currentSortOrder = state.currentSortOrder || 'modified-desc';
+                     sortOrderSelect.value = currentSortOrder; // Update UI
+                     currentTheme = state.currentTheme || 'light';
+                     applyTheme(currentTheme); // Apply theme
+                     const editorPercent = state.editorPanePercent || 50;
+                     // Apply sidebar collapsed state
+                     sidebar.classList.toggle('collapsed', isSidebarCollapsed);
+                     // Apply editor/preview pane sizes
+                     const resizerWidthPercent = (resizer.offsetWidth / container.offsetWidth) * 100 || 0.5;
+                     editorContainer.style.flexBasis = `${editorPercent}%`; preview.style.flexBasis = `${100 - editorPercent - resizerWidthPercent}%`;
+                     // Load active note content
+                     if (notes.length > 0) {
+                         if (activeNoteId === null || !findNoteById(activeNoteId)) { activeNoteId = notes[0].id; } // Validate active ID
+                         const activeNote = findNoteById(activeNoteId);
+                         if (activeNote) { editor.value = activeNote.content; } else { editor.value = ''; activeNoteId = null; }
+                     } else { // No notes loaded
+                         editor.value = ''; activeNoteId = null; addNote("Welcome!", "# Welcome Back!"); return; // Add default note
+                     }
+                     renderUI(); updatePreview(); setUnsavedChanges(false); // Initial load is considered 'saved'
+                     console.log("State loaded");
+                 } else { // No saved state found
+                     applyTheme('light'); // Default theme
+                     addNote("Welcome!", "# Welcome to Browser Markdown Editor!"); setUnsavedChanges(false);
+                 }
+             } catch (e) { // Handle errors during loading (e.g., corrupted data)
+                 console.error("Error loading state:", e); applyTheme('light'); addNote("Error!", "# Error Loading Previous Session"); setUnsavedChanges(false);
+             }
+         }
+
+        // --- Global Keydown Listener for Shortcuts ---
+        /** Handles global keyboard shortcuts. */
+        function handleGlobalKeyDown(event) {
+             const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+             const modKey = isMac ? event.metaKey : event.ctrlKey; // Use Meta key (Cmd) on Mac, Ctrl otherwise
+             let handled = false; // Flag to prevent default browser actions
+
+             if (modKey) { // If Ctrl or Cmd is pressed
+                 switch (event.key.toLowerCase()) {
+                     case 's': saveNote(); handled = true; break; // Save
+                     case 'n': addNote(); handled = true; break; // New Note
+                     case 'f': showFindReplace(); handled = true; break; // Find
+                     // Formatting shortcuts - only apply if editor has focus
+                     case 'b': if (document.activeElement === editor) { applyMarkdownFormatting('**'); handled = true; } break; // Bold
+                     case 'i': if (document.activeElement === editor) { applyMarkdownFormatting('*'); handled = true; } break; // Italic
+                 }
+             }
+             // Escape key handling - hide find/replace bar or potentially other modals later
+             if (event.key === 'Escape' && findReplaceBar.style.display !== 'none') {
+                 hideFindReplace(); handled = true;
+             }
+             // Prevent default browser action if we handled the shortcut
+             if (handled) { event.preventDefault(); }
+        }
+
+        // --- Event Listeners Setup ---
+
+        // Editor input: Update preview, status bar, mark unsaved, trigger auto-save
+        editor.addEventListener('input', () => {
+            updatePreview(); updateStatusBar(); setUnsavedChanges(true, true); extractAndRenderTags(); // Update tags live
+            // Throttled auto-save to localStorage
+            clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(() => {
+                 saveStateToLocalStorage();
+                 console.log("Auto-saved state to localStorage.");
+             }, 2000); // 2-second delay
+        });
+        // Editor keydown: Handle auto-pairing and list continuation
+        editor.addEventListener('keydown', handleEditorKeyDown);
+
+        // Editor Toolbar clicks
+        editorToolbar.addEventListener('click', (e) => {
+            const target = e.target.closest('button'); // Handle clicks on button or its children
+            if (target) {
+                switch (target.id) {
+                    case 'toolbarH1': applyMarkdownFormatting('# ', '', 'Heading 1', true); break;
+                    case 'toolbarH2': applyMarkdownFormatting('## ', '', 'Heading 2', true); break;
+                    case 'toolbarH3': applyMarkdownFormatting('### ', '', 'Heading 3', true); break;
+                    case 'toolbarBold': applyMarkdownFormatting('**'); break;
+                    case 'toolbarItalic': applyMarkdownFormatting('*'); break;
+                    case 'toolbarStrikethrough': applyMarkdownFormatting('~~'); break;
+                    case 'toolbarBlockquote': applyMarkdownFormatting('> ', '', 'Quote text', true); break;
+                    case 'toolbarLink': applyMarkdownFormatting('[', '](url)', 'link text'); break;
+                    case 'toolbarCode': applyMarkdownFormatting('`'); break;
+                    case 'toolbarListUl': applyMarkdownFormatting('- ', '', 'List item', true); break;
+                    case 'toolbarListOl': applyMarkdownFormatting('1. ', '', 'List item', true); break;
+                    case 'toolbarTaskList': applyMarkdownFormatting('- [ ] ', '', 'Task item', true); break;
+                    case 'toolbarHr': applyMarkdownFormatting('---', '', '', true); break;
+                }
+            }
+        });
+
+        // Find/Replace Bar listeners
+        findReplaceToggleBtn.addEventListener('click', showFindReplace);
+        findReplaceCloseBtn.addEventListener('click', hideFindReplace);
+        findInput.addEventListener('input', findAllMatches); // Update matches live
+        findInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') findNext(); /* Esc handled globally */ });
+        replaceInput.addEventListener('keydown', (e) => { /* Esc handled globally */ });
+        findNextBtn.addEventListener('click', findNext);
+        findPrevBtn.addEventListener('click', findPrev);
+        replaceBtn.addEventListener('click', replaceCurrent);
+        replaceAllBtn.addEventListener('click', replaceAll);
+
+        // Main Controls listeners
+        openBtn.addEventListener('click', openSingleFile);
+        saveBtn.addEventListener('click', saveNote);
+        newNoteBtn.addEventListener('click', () => addNote());
+        addTabBtn.addEventListener('click', () => addNote()); // '+' button listener
+        renameBtn.addEventListener('click', renameNote);
+        closeNoteBtn.addEventListener('click', closeNote); // Close active note button
+        fileInput.addEventListener('change', handleFileOpen); // Hidden file input handler
+        exportAllBtn.addEventListener('click', exportAllNotes);
+        importBtn.addEventListener('click', importFiles);
+        importFolderBtn.addEventListener('click', importFolder);
+        noteSwitcher.addEventListener('change', (event) => { const selectedId = Number(event.target.value); if (selectedId && selectedId !== activeNoteId) { switchTab(selectedId); } }); // Dropdown switcher
+        searchBtn.addEventListener('click', performSearch); // Global search button
+        searchInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') { performSearch(); event.preventDefault(); } }); // Global search on Enter
+        searchInput.addEventListener('click', closeMenuDropdown); // Close menu if search is focused
+        searchCloseBtn.addEventListener('click', closeSearchResults); // Close button for global search overlay
+        searchResultsContent.addEventListener('click', (event) => { const resultItem = event.target.closest('.search-result-item'); if (resultItem && resultItem.dataset.noteId) { const noteIdToSwitch = Number(resultItem.dataset.noteId); switchTab(noteIdToSwitch); closeSearchResults(); } }); // Click results to switch note
+
+        // Sidebar listeners
+        sidebarToggleBtn.addEventListener('click', toggleSidebar); // Sidebar collapse/expand
+        // Sidebar note list and pin clicks handled during renderSidebarNoteList
+
+        // Sort order change listener
+        sortOrderSelect.addEventListener('change', (e) => { currentSortOrder = e.target.value; saveStateToLocalStorage(); renderSidebarNoteList(); });
+        // Clear tag filter listener
+        clearTagFilterBtn.addEventListener('click', clearTagFilter);
+        // Tag list clicks handled during extractAndRenderTags
+
+        // Menu listeners
+        menuToggleBtn.addEventListener('click', (event) => { event.stopPropagation(); toggleMenuDropdown(); }); // Toggle menu visibility
+        themeToggleBtn.addEventListener('click', toggleTheme); // Theme button in controls
+        themeToggleBtnMenu.addEventListener('click', toggleTheme); // Theme button in menu
+
+        // Global click listener (to close menu when clicking outside)
+        document.addEventListener('click', (event) => { if (!menuToggleBtn.contains(event.target) && !menuDropdown.contains(event.target)) { closeMenuDropdown(); } });
+
+        // Resizer listener
+        resizer.addEventListener('mousedown', startDrag);
+
+        // Window listeners
+        // Prompt user if there are unsaved changes before leaving
+        window.addEventListener('beforeunload', (event) => {
+            if (notes.length > 0) { clearTimeout(autoSaveTimer); saveStateToLocalStorage(); } // Final save attempt
+            if (unsavedChanges) { event.preventDefault(); event.returnValue = 'You have unsaved changes. Are you sure you want to leave?'; return 'You have unsaved changes. Are you sure you want to leave?'; }
+        });
+        // Global keyboard shortcut listener
+        document.addEventListener('keydown', handleGlobalKeyDown);
+
+        // --- Initial Application Setup ---
+        loadStateFromLocalStorage(); // Load previous state or initialize defaults
+        // Ensure initial UI state matches loaded state
+        applyTheme(currentTheme); // Apply loaded theme
+        const initialButton = document.getElementById('sidebarToggleBtn'); // Ensure sidebar button text is correct
+        if (initialButton) { initialButton.textContent = isSidebarCollapsed ? '>' : '<'; initialButton.title = isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'; }
+        // Initial render of components based on loaded state
+        renderUI();
+
+    </script>
+
+</body>
+</html>
