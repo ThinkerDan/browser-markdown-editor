@@ -16,6 +16,18 @@ A standalone, single-file HTML Markdown editor for restricted environments. No i
 
 ---
 
+## 🚀 Live Demo
+
+You can try the editor live directly in your browser using GitHub Pages:
+
+**[➡️ Try Portable Markdown Editor Live Here!](https://ThinkerDan.github.io/browser-markdown-editor/)**
+
+*   **Note:** This demo uses your browser's `localStorage` for persistence. Your notes will be saved *only* in the browser you use for the demo and will be lost if you clear your browser data or switch browsers/devices. Saving notes using the "Save Current Note" button is the only way to permanently keep them outside the browser's storage.
+*   For the best experience and full feature support (like "Import Folder"), use a modern Chromium-based browser (Chrome, Edge).
+*   This demo serves the exact same `index.html` file from the main branch of this repository.
+
+---
+
 ## Key Features
 
 *   **Live Markdown Preview:** Real-time split-pane view (Editor | Preview) using [marked.js](https://marked.js.org/).
