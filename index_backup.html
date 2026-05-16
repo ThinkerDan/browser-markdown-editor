@@ -168,8 +168,9 @@
         #clearTagFilterBtn:hover { text-decoration: underline; }
 
         /* Sidebar Note List */
-        #sidebarNoteList { list-style: none; padding: 0; margin: 0; overflow-y: auto; /* Allow scrolling for notes */ flex-grow: 1; /* Take remaining space in sidebar */ }
-        .sidebar-note-item { display: flex; align-items: center; padding: 8px 5px 8px 15px; cursor: pointer; border-bottom: 1px solid var(--hr-color); }
+        #sidebarNoteList { list-style: none; padding: 0; margin: 0; overflow-y: auto; /* Allow scrolling for notes */ flex-grow: 1; /* Take remaining space in sidebar */ position: relative; }
+        .sidebar-note-item { display: flex; align-items: center; padding: 0 5px 0 15px; cursor: pointer; border-bottom: 1px solid var(--hr-color); position: absolute; left: 0; right: 0; height: 36px; box-sizing: border-box; }
+        .virtual-scroll-spacer { position: absolute; top: 0; left: 0; right: 0; z-index: -1; visibility: hidden; }
         .sidebar-note-item:hover { background-color: var(--sidebar-item-hover-bg); }
         .note-name-sidebar { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* Show '...' if name is too long */ font-size: 14px; margin-right: 5px; }
         .pin-note-btn { background: none; border: none; cursor: pointer; padding: 0 5px; font-size: 14px; opacity: 0.3; /* Dimmed by default */ flex-shrink: 0; color: var(--text-color); }
@@ -436,6 +437,9 @@
         let activeFilterTag = null; // Stores the tag currently used for filtering the sidebar list, or null if no filter
         let currentTheme = 'light'; // Tracks the current theme ('light' or 'dark')
         let autoSaveTimer = null; // Timer ID for debouncing auto-save to localStorage
+        let virtualizedNotes = []; // State for sidebar virtualization
+        const VIRTUAL_ITEM_HEIGHT = 36; // Estimated height of a single sidebar note item
+        let animationFrameId = null; // Store animation frame for scroll to avoid excessive renders
 
 
         // --- Library Configuration ---
@@ -658,7 +662,8 @@
                  // Simple sort: Pinned first, rest maintain relative order (can be enhanced)
                 const sortedForTabs = notes.slice().sort((a, b) => (b.isPinned - a.isPinned)); // Pinned first
 
-                // Create and append a tab element for each note
+                // Create and append a tab element for each note using DocumentFragment
+                const fragment = document.createDocumentFragment();
                 sortedForTabs.forEach(note => {
                     const tab = document.createElement('button');
                     tab.className = 'tab';
@@ -685,22 +690,12 @@
                         tab.classList.add('active');
                     }
 
-                    // Click listener for the tab (switch note) - ignores clicks on close button
-                    tab.addEventListener('click', (e) => {
-                        if (e.target !== closeBtnSpan) { // Only switch if tab area (not 'x') is clicked
-                            switchTab(Number(tab.dataset.id));
-                        }
-                    });
-
-                    // Click listener for the close button (close note)
-                    closeBtnSpan.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent tab click event from firing
-                        closeNoteById(Number(closeBtnSpan.dataset.id));
-                    });
-
-                    // Insert the new tab before the '+' button
-                    tabsContainer.insertBefore(tab, addTabBtn);
+                    // Append to fragment
+                    fragment.appendChild(tab);
                 });
+
+                // Batch insert all tabs before the '+' button
+                tabsContainer.insertBefore(fragment, addTabBtn);
 
                 // Scroll the active tab into view if necessary
                 const activeTabElement = tabsContainer.querySelector('.tab.active');
@@ -719,6 +714,7 @@
         function renderSwitcher() {
             try {
                 noteSwitcher.innerHTML = ''; // Clear previous options
+                const fragment = document.createDocumentFragment();
                 notes.forEach(note => {
                     const option = document.createElement('option');
                     option.value = note.id;
@@ -727,8 +723,9 @@
                     if (note.id === activeNoteId) {
                         option.selected = true;
                     }
-                    noteSwitcher.appendChild(option);
+                    fragment.appendChild(option);
                 });
+                noteSwitcher.appendChild(fragment);
                 // Disable switcher if there are no notes
                 noteSwitcher.disabled = notes.length === 0;
             } catch(e){
@@ -766,55 +763,76 @@
                 // Combine lists: pinned first, then unpinned
                 const finalSortedNotes = [...sortedPinned, ...sortedUnpinned];
 
-                sidebarNoteList.innerHTML = ''; // Clear previous list items
-
-                // Create and append list items for each note in the final sorted list
-                finalSortedNotes.forEach(note => {
-                    const listItem = document.createElement('li');
-                    listItem.className = 'sidebar-note-item';
-                    listItem.dataset.id = note.id; // Store note ID
-
-                    // Highlight if it's the active note
-                    if (note.id === activeNoteId) {
-                        listItem.classList.add('active-note-sidebar');
-                    }
-
-                    // Span for the note name (allows ellipsis)
-                    const noteNameSpan = document.createElement('span');
-                    noteNameSpan.className = 'note-name-sidebar';
-                    noteNameSpan.textContent = note.name;
-                    noteNameSpan.title = note.name; // Show full name on hover
-
-                    // Button for pinning/unpinning
-                    const pinButton = document.createElement('button');
-                    pinButton.className = 'pin-note-btn';
-                    pinButton.innerHTML = '📌'; // Pin emoji
-                    pinButton.title = note.isPinned ? 'Unpin Note' : 'Pin Note'; // Dynamic title
-                    if (note.isPinned) {
-                        pinButton.classList.add('pinned'); // Add class if pinned for styling
-                    }
-                    pinButton.dataset.id = note.id; // Store note ID
-
-                    // Click listener for pin button
-                    pinButton.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent list item click event
-                        togglePinNote(Number(pinButton.dataset.id));
-                    });
-
-                    // Click listener for list item (switch note) - ignores clicks on pin button
-                    listItem.addEventListener('click', (e) => {
-                        if (e.target !== pinButton) { // Only switch if item area (not pin) is clicked
-                            switchTab(Number(listItem.dataset.id));
-                        }
-                    });
-
-                    listItem.appendChild(noteNameSpan);
-                    listItem.appendChild(pinButton);
-                    sidebarNoteList.appendChild(listItem);
-                });
+                virtualizedNotes = finalSortedNotes;
+                renderSidebarVirtualWindow();
             } catch (e) {
                 console.error("Error rendering sidebar note list:", e);
                 sidebarNoteList.innerHTML = '<li>Error loading notes list.</li>'; // Display error in list
+            }
+        }
+
+        /**
+         * Renders only the visible portion of the sidebar list based on scroll position.
+         */
+        function renderSidebarVirtualWindow() {
+            try {
+                const containerHeight = sidebarNoteList.clientHeight || 300; // Fallback height if not visible
+                const scrollTop = sidebarNoteList.scrollTop;
+                const totalItems = virtualizedNotes.length;
+                const totalHeight = totalItems * VIRTUAL_ITEM_HEIGHT;
+                
+                sidebarNoteList.innerHTML = ''; // Clear previous items
+                
+                if (totalItems === 0) {
+                    return;
+                }
+                
+                const fragment = document.createDocumentFragment();
+                
+                // Single spacer element to force the container's scroll height
+                const spacer = document.createElement('li');
+                spacer.className = 'virtual-scroll-spacer';
+                spacer.style.height = `${totalHeight}px`;
+                fragment.appendChild(spacer);
+                
+                // Calculate visible range (with buffer of 5 items above and below)
+                const startIndex = Math.max(0, Math.floor(scrollTop / VIRTUAL_ITEM_HEIGHT) - 5);
+                const endIndex = Math.min(totalItems - 1, Math.ceil((scrollTop + containerHeight) / VIRTUAL_ITEM_HEIGHT) + 5);
+                
+                // Visible items (absolutely positioned)
+                for (let i = startIndex; i <= endIndex; i++) {
+                    const note = virtualizedNotes[i];
+                    const listItem = document.createElement('li');
+                    listItem.className = 'sidebar-note-item';
+                    listItem.dataset.id = note.id;
+                    listItem.style.top = `${i * VIRTUAL_ITEM_HEIGHT}px`;
+                    
+                    if (note.id === activeNoteId) {
+                        listItem.classList.add('active-note-sidebar');
+                    }
+                    
+                    const noteNameSpan = document.createElement('span');
+                    noteNameSpan.className = 'note-name-sidebar';
+                    noteNameSpan.textContent = note.name;
+                    noteNameSpan.title = note.name;
+                    
+                    const pinButton = document.createElement('button');
+                    pinButton.className = 'pin-note-btn';
+                    pinButton.innerHTML = '📌';
+                    pinButton.title = note.isPinned ? 'Unpin Note' : 'Pin Note';
+                    if (note.isPinned) {
+                        pinButton.classList.add('pinned');
+                    }
+                    pinButton.dataset.id = note.id;
+                    
+                    listItem.appendChild(noteNameSpan);
+                    listItem.appendChild(pinButton);
+                    fragment.appendChild(listItem);
+                }
+                
+                sidebarNoteList.appendChild(fragment);
+            } catch (e) {
+                console.error("Error rendering virtual window:", e);
             }
         }
 
@@ -2389,6 +2407,46 @@
                 const noteIdToSwitch = Number(resultItem.dataset.id);
                 switchTab(noteIdToSwitch); // Switch to the clicked note
                 closeSearchResults(); // Close overlay after switching
+            }
+        });
+
+        // --- Event Delegation ---
+
+        // Tabs Event Delegation
+        tabsContainer.addEventListener('click', (e) => {
+            const closeBtn = e.target.closest('.close-tab-btn');
+            if (closeBtn) {
+                e.stopPropagation();
+                closeNoteById(Number(closeBtn.dataset.id));
+                return;
+            }
+            
+            const tab = e.target.closest('.tab');
+            if (tab && tab !== addTabBtn) {
+                switchTab(Number(tab.dataset.id));
+            }
+        });
+
+        // Sidebar Virtualization Scroll Listener
+        sidebarNoteList.addEventListener('scroll', () => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            animationFrameId = requestAnimationFrame(renderSidebarVirtualWindow);
+        });
+
+        // Sidebar Event Delegation
+        sidebarNoteList.addEventListener('click', (e) => {
+            const pinBtn = e.target.closest('.pin-note-btn');
+            if (pinBtn) {
+                e.stopPropagation();
+                togglePinNote(Number(pinBtn.dataset.id));
+                return;
+            }
+            
+            const listItem = e.target.closest('.sidebar-note-item');
+            if (listItem) {
+                switchTab(Number(listItem.dataset.id));
             }
         });
 
