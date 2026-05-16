@@ -3,6 +3,7 @@ import { marked } from 'marked';
 import * as state from './state.js';
 import * as dom from './dom.js';
 import { sortNotes, escapeRegExp, debounce } from './utils.js';
+import { register } from './registry.js';
 import {
     renderUI, renderSidebarNoteList, renderSidebarVirtualWindow,
     updatePreview, updateStatusBar, applyTheme,
@@ -17,7 +18,7 @@ import {
 
 marked.setOptions({ breaks: true, gfm: true, pedantic: false, smartLists: true, smartypants: false });
 
-// ── Exported helpers (used by fileSystem.js via dynamic import) ──
+// ── Exported helpers (used by fileSystem.js and ui.js via registry) ──
 export function findNoteById(id) { return state.notes.find(n => n.id === Number(id)); }
 export function findNoteIndexById(id) { return state.notes.findIndex(n => n.id === Number(id)); }
 
@@ -497,6 +498,16 @@ window.addEventListener('beforeunload', e => {
     if (state.unsavedChanges) { e.preventDefault(); e.returnValue = 'You have unsaved changes.'; }
 });
 document.addEventListener('keydown', handleGlobalKeyDown);
+
+// ── Registry ──────────────────────────────────────────────────────────────────
+// Populate the registry so fileSystem.js and ui.js can call these without
+// circular dynamic imports.
+register({
+    findNoteById, findNoteIndexById, setUnsavedChanges,
+    saveStateToLocalStorage, addNote, switchTab,
+    renderUI, renderSidebarNoteList,
+    setTagFilter, clearTagFilter,
+});
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 loadStateFromLocalStorage();

@@ -7,8 +7,8 @@ import JSZip from 'jszip';
 import * as state from './state.js';
 import * as dom from './dom.js';
 import { escapeRegExp } from './utils.js';
-import { closeMenuDropdownUI } from './ui.js';
-// switchTab, addNote etc. are imported lazily from main.js to avoid circular deps
+import { closeMenuDropdownUI, updatePreview, renderUI } from './ui.js';
+import { get } from './registry.js';
 
 // ─── Save to file ────────────────────────────────────────────────────────────
 
@@ -17,26 +17,28 @@ import { closeMenuDropdownUI } from './ui.js';
  */
 export function saveNote() {
     if (!state.activeNoteId) { alert('Please select a note to save.'); return; }
-    import('./main.js').then(({ findNoteById, setUnsavedChanges, saveStateToLocalStorage }) => {
-        const note = findNoteById(state.activeNoteId);
-        if (!note) return;
-        note.content = dom.editor.value;
-        note.updatedAt = Date.now();
+    const findNoteById = get('findNoteById');
+    const setUnsavedChanges = get('setUnsavedChanges');
+    const saveStateToLocalStorage = get('saveStateToLocalStorage');
 
-        let filename = note.name;
-        if (!/\.(md|txt)$/i.test(filename)) filename += '.md';
+    const note = findNoteById(state.activeNoteId);
+    if (!note) return;
+    note.content = dom.editor.value;
+    note.updatedAt = Date.now();
 
-        const blob = new Blob([note.content], { type: 'text/markdown;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a); URL.revokeObjectURL(url);
+    let filename = note.name;
+    if (!/\.(md|txt)$/i.test(filename)) filename += '.md';
 
-        setUnsavedChanges(false);
-        closeMenuDropdownUI();
-        saveStateToLocalStorage();
-    });
+    const blob = new Blob([note.content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+
+    setUnsavedChanges(false);
+    closeMenuDropdownUI();
+    saveStateToLocalStorage();
 }
 
 // ─── Import files ────────────────────────────────────────────────────────────
@@ -60,75 +62,80 @@ export function openSingleFile() {
  * @param {Event} event
  */
 export function handleFileOpen(event) {
-    import('./main.js').then(({ addNote, findNoteById, switchTab, renderUI, saveStateToLocalStorage, setUnsavedChanges }) => {
-        const files = event.target.files;
-        if (!files || files.length === 0) {
-            dom.fileInput.setAttribute('multiple', '');
-            return;
-        }
-        state.setFirstAddedNoteIdDuringImport(null);
-        let notesProcessed = 0;
-        setUnsavedChanges(true);
+    const addNote = get('addNote');
+    const findNoteById = get('findNoteById');
+    const switchTab = get('switchTab');
+    const saveStateToLocalStorage = get('saveStateToLocalStorage');
+    const setUnsavedChanges = get('setUnsavedChanges');
 
-        Array.from(files).forEach(file => {
-            const reader = new FileReader();
-            const fileCreationTime = file.lastModified;
-            reader.onload = (e) => {
-                const content = e.target.result;
-                const name = file.name;
-                const existingNote = state.notes.find(n => n.name === name);
-                let addedNoteId = null;
+    const files = event.target.files;
+    if (!files || files.length === 0) {
+        dom.fileInput.setAttribute('multiple', '');
+        return;
+    }
+    state.setFirstAddedNoteIdDuringImport(null);
+    let notesProcessed = 0;
+    setUnsavedChanges(true);
 
-                if (existingNote) {
-                    if (files.length === 1 && confirm(`A note named "${name}" is already open. Replace its content?\n(Cancel to import as copy)`)) {
-                        existingNote.content = content;
-                        existingNote.updatedAt = fileCreationTime || Date.now();
-                        if (existingNote.id === state.activeNoteId) {
-                            dom.editor.value = content;
-                            import('./ui.js').then(({ updatePreview }) => updatePreview());
-                        } else {
-                            renderUI();
-                        }
+    Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        const fileCreationTime = file.lastModified;
+        reader.onload = (e) => {
+            const content = e.target.result;
+            const name = file.name;
+            const existingNote = state.notes.find(n => n.name === name);
+            let addedNoteId = null;
+
+            if (existingNote) {
+                if (files.length === 1 && confirm(`A note named "${name}" is already open. Replace its content?\n(Cancel to import as copy)`)) {
+                    existingNote.content = content;
+                    existingNote.updatedAt = fileCreationTime || Date.now();
+                    if (existingNote.id === state.activeNoteId) {
+                        dom.editor.value = content;
+                        updatePreview();
                     } else {
-                        addedNoteId = addNote(name.replace(/(\.[^.]*)?$/i, ' (copy)$1'), content);
-                        const newNote = findNoteById(addedNoteId);
-                        if (newNote) { newNote.createdAt = fileCreationTime || newNote.createdAt; newNote.updatedAt = fileCreationTime || newNote.updatedAt; }
+                        renderUI();
                     }
                 } else {
-                    addedNoteId = addNote(name, content);
+                    addedNoteId = addNote(name.replace(/(\.[^.]*)?$/i, ' (copy)$1'), content);
                     const newNote = findNoteById(addedNoteId);
                     if (newNote) { newNote.createdAt = fileCreationTime || newNote.createdAt; newNote.updatedAt = fileCreationTime || newNote.updatedAt; }
                 }
+            } else {
+                addedNoteId = addNote(name, content);
+                const newNote = findNoteById(addedNoteId);
+                if (newNote) { newNote.createdAt = fileCreationTime || newNote.createdAt; newNote.updatedAt = fileCreationTime || newNote.updatedAt; }
+            }
 
-                if (addedNoteId !== null && state.firstAddedNoteIdDuringImport === null) {
-                    state.setFirstAddedNoteIdDuringImport(addedNoteId);
+            if (addedNoteId !== null && state.firstAddedNoteIdDuringImport === null) {
+                state.setFirstAddedNoteIdDuringImport(addedNoteId);
+            }
+            notesProcessed++;
+            if (notesProcessed === files.length) {
+                if (state.firstAddedNoteIdDuringImport !== null && findNoteById(state.firstAddedNoteIdDuringImport)) {
+                    switchTab(state.firstAddedNoteIdDuringImport);
+                } else {
+                    renderUI();
+                    saveStateToLocalStorage();
                 }
-                notesProcessed++;
-                if (notesProcessed === files.length) {
-                    if (state.firstAddedNoteIdDuringImport !== null && findNoteById(state.firstAddedNoteIdDuringImport)) {
-                        switchTab(state.firstAddedNoteIdDuringImport);
-                    } else {
-                        renderUI();
-                        saveStateToLocalStorage();
-                    }
-                }
-            };
-            reader.onerror = () => {
-                console.error('Error reading file:', file.name);
-                alert('Error reading file: ' + file.name);
-                notesProcessed++;
-                if (notesProcessed === files.length) { renderUI(); saveStateToLocalStorage(); }
-            };
-            reader.readAsText(file);
-        });
-        dom.fileInput.setAttribute('multiple', '');
+            }
+        };
+        reader.onerror = () => {
+            console.error('Error reading file:', file.name);
+            alert('Error reading file: ' + file.name);
+            notesProcessed++;
+            if (notesProcessed === files.length) { renderUI(); saveStateToLocalStorage(); }
+        };
+        reader.readAsText(file);
     });
+    dom.fileInput.setAttribute('multiple', '');
 }
 
 // ─── Import folder ────────────────────────────────────────────────────────────
 
 async function processDirectory(directoryHandle) {
-    const { addNote, findNoteById } = await import('./main.js');
+    const addNote = get('addNote');
+    const findNoteById = get('findNoteById');
     try {
         for await (const entry of directoryHandle.values()) {
             if (entry.kind === 'file' && /\.(md|txt)$/i.test(entry.name)) {
@@ -174,7 +181,10 @@ export async function importFolder() {
         const directoryHandle = await window.showDirectoryPicker();
         if (!directoryHandle) return;
         state.setFirstAddedNoteIdDuringImport(null);
-        const { setUnsavedChanges, switchTab, renderUI, saveStateToLocalStorage, findNoteById } = await import('./main.js');
+        const setUnsavedChanges = get('setUnsavedChanges');
+        const switchTab = get('switchTab');
+        const findNoteById = get('findNoteById');
+        const saveStateToLocalStorage = get('saveStateToLocalStorage');
         setUnsavedChanges(true);
         await processDirectory(directoryHandle);
         if (state.firstAddedNoteIdDuringImport !== null && findNoteById(state.firstAddedNoteIdDuringImport)) {
@@ -196,32 +206,31 @@ export async function importFolder() {
 export function exportAllNotes() {
     if (state.notes.length === 0) { alert('No notes to export.'); return; }
     closeMenuDropdownUI();
-    import('./main.js').then(({ findNoteById }) => {
-        const currentNote = findNoteById(state.activeNoteId);
-        if (currentNote) currentNote.content = dom.editor.value;
+    const findNoteById = get('findNoteById');
+    const currentNote = findNoteById(state.activeNoteId);
+    if (currentNote) currentNote.content = dom.editor.value;
 
-        const zip = new JSZip();
-        const nameCounts = {};
-        state.notes.forEach(note => {
-            let filename = note.name;
-            if (!/\.(md|txt)$/i.test(filename)) filename += '.md';
-            const baseName  = filename.replace(/\.(md|txt)$/i, '');
-            const extension = (filename.match(/\.(md|txt)$/i) || ['.md'])[0];
-            let counter = nameCounts[filename] || 0;
-            let uniqueFilename = filename;
-            while (zip.file(uniqueFilename)) { counter++; uniqueFilename = `${baseName} (${counter})${extension}`; }
-            nameCounts[filename] = counter;
-            zip.file(uniqueFilename, note.content, { date: new Date(note.updatedAt || Date.now()) });
-        });
-
-        zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
-            .then(content => {
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(content);
-                link.download = 'markdown_notes.zip';
-                document.body.appendChild(link); link.click();
-                document.body.removeChild(link); URL.revokeObjectURL(link.href);
-            })
-            .catch(err => { console.error('Error generating zip:', err); alert('Error creating zip archive: ' + err.message); });
+    const zip = new JSZip();
+    const nameCounts = {};
+    state.notes.forEach(note => {
+        let filename = note.name;
+        if (!/\.(md|txt)$/i.test(filename)) filename += '.md';
+        const baseName  = filename.replace(/\.(md|txt)$/i, '');
+        const extension = (filename.match(/\.(md|txt)$/i) || ['.md'])[0];
+        let counter = nameCounts[filename] || 0;
+        let uniqueFilename = filename;
+        while (zip.file(uniqueFilename)) { counter++; uniqueFilename = `${baseName} (${counter})${extension}`; }
+        nameCounts[filename] = counter;
+        zip.file(uniqueFilename, note.content, { date: new Date(note.updatedAt || Date.now()) });
     });
+
+    zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+        .then(content => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = 'markdown_notes.zip';
+            document.body.appendChild(link); link.click();
+            document.body.removeChild(link); URL.revokeObjectURL(link.href);
+        })
+        .catch(err => { console.error('Error generating zip:', err); alert('Error creating zip archive: ' + err.message); });
 }

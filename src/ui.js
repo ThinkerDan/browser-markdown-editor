@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import * as state from './state.js';
 import * as dom from './dom.js';
 import { sortNotes, escapeRegExp } from './utils.js';
+import * as reg from './registry.js';
 
 // Item height for sidebar virtualization (must match CSS)
 export const VIRTUAL_ITEM_HEIGHT = 36;
@@ -233,9 +234,9 @@ export function extractAndRenderTags() {
                 btn.textContent = `#${tag}`;
                 btn.dataset.tag = tag;
                 if (tag === state.activeFilterTag) btn.classList.add('active-tag');
-                // Import lazily to avoid circular dep with main.js
-                btn.addEventListener('click', async () => {
-                    const { setTagFilter, clearTagFilter } = await import('./main.js');
+                btn.addEventListener('click', () => {
+                    const setTagFilter = reg.get('setTagFilter');
+                    const clearTagFilter = reg.get('clearTagFilter');
                     if (state.activeFilterTag === tag) clearTagFilter();
                     else setTagFilter(tag);
                 });
