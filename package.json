@@ -1,0 +1,26 @@
+{
+  "name": "browser-markdown-editor",
+  "version": "1.0.0",
+  "description": "A standalone, single-file HTML Markdown editor for restricted environments. No installation needed.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ThinkerDan/browser-markdown-editor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/ThinkerDan/browser-markdown-editor/issues"
+  },
+  "homepage": "https://github.com/ThinkerDan/browser-markdown-editor#readme",
+  "devDependencies": {
+    "vite": "^8.0.13"
+  }
+}

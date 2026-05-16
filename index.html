@@ -658,7 +658,8 @@
                  // Simple sort: Pinned first, rest maintain relative order (can be enhanced)
                 const sortedForTabs = notes.slice().sort((a, b) => (b.isPinned - a.isPinned)); // Pinned first
 
-                // Create and append a tab element for each note
+                // Create and append a tab element for each note using DocumentFragment
+                const fragment = document.createDocumentFragment();
                 sortedForTabs.forEach(note => {
                     const tab = document.createElement('button');
                     tab.className = 'tab';
@@ -685,22 +686,12 @@
                         tab.classList.add('active');
                     }
 
-                    // Click listener for the tab (switch note) - ignores clicks on close button
-                    tab.addEventListener('click', (e) => {
-                        if (e.target !== closeBtnSpan) { // Only switch if tab area (not 'x') is clicked
-                            switchTab(Number(tab.dataset.id));
-                        }
-                    });
-
-                    // Click listener for the close button (close note)
-                    closeBtnSpan.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent tab click event from firing
-                        closeNoteById(Number(closeBtnSpan.dataset.id));
-                    });
-
-                    // Insert the new tab before the '+' button
-                    tabsContainer.insertBefore(tab, addTabBtn);
+                    // Append to fragment
+                    fragment.appendChild(tab);
                 });
+
+                // Batch insert all tabs before the '+' button
+                tabsContainer.insertBefore(fragment, addTabBtn);
 
                 // Scroll the active tab into view if necessary
                 const activeTabElement = tabsContainer.querySelector('.tab.active');
@@ -719,6 +710,7 @@
         function renderSwitcher() {
             try {
                 noteSwitcher.innerHTML = ''; // Clear previous options
+                const fragment = document.createDocumentFragment();
                 notes.forEach(note => {
                     const option = document.createElement('option');
                     option.value = note.id;
@@ -727,8 +719,9 @@
                     if (note.id === activeNoteId) {
                         option.selected = true;
                     }
-                    noteSwitcher.appendChild(option);
+                    fragment.appendChild(option);
                 });
+                noteSwitcher.appendChild(fragment);
                 // Disable switcher if there are no notes
                 noteSwitcher.disabled = notes.length === 0;
             } catch(e){
@@ -768,7 +761,8 @@
 
                 sidebarNoteList.innerHTML = ''; // Clear previous list items
 
-                // Create and append list items for each note in the final sorted list
+                // Create and append list items for each note in the final sorted list using DocumentFragment
+                const fragment = document.createDocumentFragment();
                 finalSortedNotes.forEach(note => {
                     const listItem = document.createElement('li');
                     listItem.className = 'sidebar-note-item';
@@ -795,23 +789,13 @@
                     }
                     pinButton.dataset.id = note.id; // Store note ID
 
-                    // Click listener for pin button
-                    pinButton.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent list item click event
-                        togglePinNote(Number(pinButton.dataset.id));
-                    });
-
-                    // Click listener for list item (switch note) - ignores clicks on pin button
-                    listItem.addEventListener('click', (e) => {
-                        if (e.target !== pinButton) { // Only switch if item area (not pin) is clicked
-                            switchTab(Number(listItem.dataset.id));
-                        }
-                    });
-
                     listItem.appendChild(noteNameSpan);
                     listItem.appendChild(pinButton);
-                    sidebarNoteList.appendChild(listItem);
+                    fragment.appendChild(listItem);
                 });
+                
+                // Batch insert into DOM
+                sidebarNoteList.appendChild(fragment);
             } catch (e) {
                 console.error("Error rendering sidebar note list:", e);
                 sidebarNoteList.innerHTML = '<li>Error loading notes list.</li>'; // Display error in list
@@ -2389,6 +2373,38 @@
                 const noteIdToSwitch = Number(resultItem.dataset.id);
                 switchTab(noteIdToSwitch); // Switch to the clicked note
                 closeSearchResults(); // Close overlay after switching
+            }
+        });
+
+        // --- Event Delegation ---
+
+        // Tabs Event Delegation
+        tabsContainer.addEventListener('click', (e) => {
+            const closeBtn = e.target.closest('.close-tab-btn');
+            if (closeBtn) {
+                e.stopPropagation();
+                closeNoteById(Number(closeBtn.dataset.id));
+                return;
+            }
+            
+            const tab = e.target.closest('.tab');
+            if (tab && tab !== addTabBtn) {
+                switchTab(Number(tab.dataset.id));
+            }
+        });
+
+        // Sidebar Event Delegation
+        sidebarNoteList.addEventListener('click', (e) => {
+            const pinBtn = e.target.closest('.pin-note-btn');
+            if (pinBtn) {
+                e.stopPropagation();
+                togglePinNote(Number(pinBtn.dataset.id));
+                return;
+            }
+            
+            const listItem = e.target.closest('.sidebar-note-item');
+            if (listItem) {
+                switchTab(Number(listItem.dataset.id));
             }
         });
 
